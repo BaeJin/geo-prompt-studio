@@ -2,7 +2,7 @@ export const LIMIT = 10000;
 export const keyOf = value => value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-US');
 export const valuesOf = text => [...new Set(text.split(/\r?\n/).map(v => v.trim()).filter(Boolean))];
 
-export function validateConfig(config) {
+export function validateConfig(config, parameterLimit = 50) {
   if (!config || config.version !== 1 || !Array.isArray(config.parameterSets) || !Array.isArray(config.templateSets)) throw Error('지원하는 설정 파일이 아닙니다. 이 화면에서 저장한 JSON 파일을 선택하세요.');
   if (config.dedupe !== undefined && typeof config.dedupe !== 'boolean') throw Error('중복 제외 설정은 참/거짓이어야 합니다.');
   const ids = new Set();
@@ -11,7 +11,7 @@ export function validateConfig(config) {
     if (!row || !str(row.id, 100) || !row.id || ids.has(row.id) || !str(row.name, 200)) throw Error('세트의 이름 또는 ID가 올바르지 않습니다.');
     ids.add(row.id);
   };
-  if (config.parameterSets.length > 50 || config.templateSets.length > 50) throw Error('세트는 각각 최대 50개까지 사용할 수 있습니다.');
+  if (config.parameterSets.length > parameterLimit || config.templateSets.length > 50) throw Error('세트는 각각 최대 50개까지 사용할 수 있습니다.');
   for (const set of config.parameterSets) {
     identity(set);
     if (!['product', 'zip'].includes(set.mode) || !Array.isArray(set.params) || set.params.length > 30) throw Error('파라미터 세트 형식을 확인하세요.');
@@ -35,8 +35,8 @@ function slots(text) {
   return [...new Set(names)];
 }
 
-export function generate(config, dedupe = true) {
-  validateConfig(config);
+export function generate(config, dedupe = true, expanded = false) {
+  validateConfig(config, expanded ? 2500 : 50);
   const errors = [], plans = [];
   let total = 0;
   const activeSets = config.templateSets.filter(s => s.enabled);
@@ -107,4 +107,61 @@ export function toCSV(rows) {
   const header = ['number', 'prompt_text', 'template_set', 'template_name', 'parameter_set', 'parameters'];
   return '\uFEFF' + [header, ...rows.map(r => header.map(k => k === 'parameters' ? JSON.stringify(r[k]) : r[k]))]
     .map(row => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
+}
+
+// The library stores reusable originals. Combinations own loaded copies.
+export function migrateStudio(value) {
+  if (value?.version === 2) {
+    validateStudio(value);
+    return structuredClone(value);
+  }
+  validateConfig(value);
+  const library = {
+    parameterSets: value.parameterSets.map(({id,name,params}) => ({id,name,params:structuredClone(params)})),
+    templateSets: value.templateSets.map(({id,name,templates}) => ({id,name,templates:templates.map(({id,name,text})=>({id,name,text}))})),
+  };
+  const combinations = value.templateSets.map((t,i)=>({
+    id:'migrated-'+i, enabled:t.enabled, templateSet:structuredClone(t),
+    parameterSets:value.parameterSets.filter(p=>t.parameterSetIds.includes(p.id)).map(p=>structuredClone(p)),
+  }));
+  return {version:2,library,combinations,dedupe:value.dedupe!==false};
+}
+
+export function validateStudio(state) {
+  if (!state || state.version!==2 || !state.library || !Array.isArray(state.combinations) || state.combinations.length>50 || typeof state.dedupe!=='boolean') throw Error('라이브러리 설정 형식을 확인하세요.');
+  const {parameterSets,templateSets}=state.library;
+  if (!Array.isArray(parameterSets)||!Array.isArray(templateSets)) throw Error('라이브러리 목록이 필요합니다.');
+  validateConfig({version:1,parameterSets:parameterSets.map(p=>({...p,mode:'product'})),templateSets:templateSets.map(t=>({...t,enabled:true,parameterSetIds:[],templates:t.templates?.map(v=>({...v,enabled:true}))}))});
+  const ids=new Set();
+  for(const c of state.combinations){
+    if(!c||typeof c.id!=='string'||!c.id||ids.has(c.id)||typeof c.enabled!=='boolean'||!c.templateSet||!Array.isArray(c.parameterSets)) throw Error('조합 항목 형식을 확인하세요.');
+    ids.add(c.id);
+    validateConfig({version:1,parameterSets:c.parameterSets,templateSets:[{...c.templateSet,parameterSetIds:c.parameterSets.map(p=>p.id)}]});
+  }
+  return state;
+}
+
+export function loadTemplate(state, templateId, id) {
+  const template=state.library.templateSets.find(t=>t.id===templateId);
+  if(!template) throw Error('불러올 템플릿을 선택하세요.');
+  if(state.combinations.length>=50) throw Error('조합은 50개까지 가능합니다.');
+  state.combinations.push({id,enabled:true,templateSet:{...structuredClone(template),enabled:true,parameterSetIds:[],templates:template.templates.map(t=>({...structuredClone(t),enabled:true}))},parameterSets:[]});
+}
+
+export function loadParameters(state, combinationId, parameterId) {
+  const c=state.combinations.find(c=>c.id===combinationId), p=state.library.parameterSets.find(p=>p.id===parameterId);
+  if(!c||!p) throw Error('불러올 파라미터를 선택하세요.');
+  if(c.parameterSets.some(v=>v.id===p.id)) throw Error('이미 불러온 세트입니다.');
+  c.parameterSets.push({...structuredClone(p),mode:'product'});
+}
+
+export function combinationConfig(state) {
+  const parameterSets=[],templateSets=[];
+  state.combinations.filter(c=>c.enabled).forEach((c,i)=>{
+    const ps=c.parameterSets.map((p,j)=>({...structuredClone(p),id:`combo-${i}-p-${j}`}));
+    parameterSets.push(...ps);
+    templateSets.push({...structuredClone(c.templateSet),id:`combo-${i}-t`,enabled:true,parameterSetIds:ps.map(p=>p.id),templates:c.templateSet.templates.map((t,j)=>({...t,id:`combo-${i}-t-${j}`}))});
+  });
+  // Limits apply per imported library and per combination; flattening may have more than 50 sets.
+  return {version:1,parameterSets,templateSets};
 }

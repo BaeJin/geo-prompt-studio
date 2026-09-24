@@ -165,3 +165,73 @@ export function combinationConfig(state) {
   // Limits apply per imported library and per combination; flattening may have more than 50 sets.
   return {version:1,parameterSets,templateSets};
 }
+
+export function requiredSlots(templateSet) {
+  return [...new Set(templateSet.templates.filter(t=>t.enabled!==false).flatMap(t=>[...t.text.matchAll(/\{([^{}]+)\}/g)].map(m=>keyOf(m[1]))))];
+}
+
+export function migrateParameters(value) {
+  if(value?.version===3){validateParameters(value);const copy=structuredClone(value);for(const c of copy.combinations)for(const b of c.bindings)b.slot=keyOf(b.slot);return copy;}
+  const old=migrateStudio(value), parameters=[], matches=new Map();
+  const labels={country:'국가',category:'차량 카테고리',hyundai:'현대차 모델',other:'비교 모델',model:'모델'};
+  const signature=p=>JSON.stringify([keyOf(p.key),p.values]);
+  const name=p=>(labels[keyOf(p.key)]||p.key)+' · '+valuesOf(p.values).slice(0,2).join(', ')+(valuesOf(p.values).length>2?' 외 '+(valuesOf(p.values).length-2)+'개':'');
+  const used=new Set(old.library.templateSets.flatMap(t=>[t.id,...t.templates.map(v=>v.id)]));let n=0;
+  function make(p){let id;do{id='independent-parameter-'+n++;}while(used.has(id));used.add(id);return{id,name:name(p).slice(0,200),values:p.values};}
+  for(const set of old.library.parameterSets)for(const p of set.params){if(!matches.has(signature(p))){const item=make(p);parameters.push(item);matches.set(signature(p),item);}}
+  const combinations=[];
+  for(const c of old.combinations){
+    for(const [i,p] of (c.parameterSets.length?c.parameterSets:[null]).entries()){
+      combinations.push({id:c.id+'-binding-'+i,enabled:c.enabled,templateSet:structuredClone(c.templateSet),mode:p?.mode||'product',
+        bindings:(p?.params||[]).map(v=>({slot:keyOf(v.key),parameter:structuredClone(matches.get(signature(v))||make(v))}))});
+    }
+  }
+  const result={version:3,library:{templateSets:old.library.templateSets,parameters},combinations,dedupe:old.dedupe};
+  validateParameters(result);return result;
+}
+
+export function validateParameters(s){
+  if(!s||s.version!==3||!s.library||!Array.isArray(s.library.parameters)||!Array.isArray(s.library.templateSets)||!Array.isArray(s.combinations)||typeof s.dedupe!=='boolean'||s.library.parameters.length>1500||s.combinations.length>2500)throw Error('독립 파라미터 설정 형식을 확인하세요.');
+  const parameter=p=>{if(!p||typeof p.id!=='string'||!p.id||p.id.length>200||typeof p.name!=='string'||p.name.length>200||typeof p.values!=='string'||p.values.length>50000)throw Error('파라미터 이름·값을 확인하세요.');};
+  const ids=new Set();for(const p of s.library.parameters){parameter(p);if(ids.has(p.id))throw Error('파라미터 ID가 중복됩니다.');ids.add(p.id);}
+  validateConfig({version:1,parameterSets:[],templateSets:s.library.templateSets.map(t=>({...t,enabled:true,parameterSetIds:[],templates:t.templates.map(v=>({...v,enabled:true}))}))});
+  const combos=new Set();
+  for(const c of s.combinations){
+    if(!c||typeof c.id!=='string'||combos.has(c.id)||typeof c.enabled!=='boolean'||!['product','zip'].includes(c.mode)||!Array.isArray(c.bindings)||c.bindings.length>100)throw Error('파라미터 연결 형식을 확인하세요.');
+    combos.add(c.id);const slots=new Set();
+    for(const b of c.bindings){if(typeof b.slot!=='string'||!b.slot.trim()||slots.has(keyOf(b.slot)))throw Error('빈칸 연결이 비어 있거나 중복됩니다.');slots.add(keyOf(b.slot));parameter(b.parameter);}
+    validateConfig({version:1,parameterSets:[],templateSets:[{...c.templateSet,parameterSetIds:[]}]});
+  }
+  return s;
+}
+
+export function loadIndependentTemplate(s,templateId,id){
+  const t=s.library.templateSets.find(t=>t.id===templateId);if(!t)throw Error('불러올 템플릿을 선택하세요.');
+  if(s.combinations.length>=50)throw Error('새 조합은 최대 50개까지 추가할 수 있습니다.');
+  s.combinations.push({id,enabled:true,templateSet:{...structuredClone(t),enabled:true,parameterSetIds:[],templates:t.templates.map(v=>({...v,enabled:true}))},mode:'product',bindings:[]});
+}
+
+export function bindParameter(s,combinationId,slot,parameterId){
+  const c=s.combinations.find(c=>c.id===combinationId),p=s.library.parameters.find(p=>p.id===parameterId);
+  if(!c||!requiredSlots(c.templateSet).includes(keyOf(slot)))throw Error('템플릿의 빈칸을 확인하세요.');
+  if(!p)throw Error('연결할 파라미터를 선택하세요.');
+  c.bindings=c.bindings.filter(b=>keyOf(b.slot)!==keyOf(slot));c.bindings.push({slot:keyOf(slot),parameter:structuredClone(p)});
+}
+
+export function generateIndependent(s){
+  validateParameters(s);
+  const active=s.combinations.filter(c=>c.enabled);
+  if(!active.length)return {rows:[],errors:['라이브러리에서 템플릿을 불러오세요.'],total:0,duplicates:0};
+  // Plan each old-compatible group, enforcing a global total before retaining output.
+  const results=[];let total=0;const errors=[];
+  for(const [i,c] of active.entries()){
+    const ps={id:'params-'+i,name:c.bindings.map(b=>b.parameter.name).join(' / ').slice(0,200),mode:c.mode,params:c.bindings.map(b=>({key:b.slot,values:b.parameter.values}))};
+    const ts={...c.templateSet,id:'template-'+i,templates:c.templateSet.templates.map((t,j)=>({...t,id:'template-'+i+'-'+j})),parameterSetIds:[ps.id]};
+    const result=generate({version:1,parameterSets:[ps],templateSets:[ts]},false);
+    total+=result.total;errors.push(...result.errors);if(total>LIMIT){errors.push('전체 조합을 10,000개 이하로 줄여주세요.');break;}results.push(result);
+  }
+  if(errors.length)return {rows:[],errors,total,duplicates:0};
+  const rows=[],seen=new Set();let duplicates=0;
+  for(const result of results)for(const row of result.rows){if(seen.has(row.prompt_text)){duplicates++;if(s.dedupe)continue;}seen.add(row.prompt_text);rows.push({...row,number:rows.length+1});}
+  return {rows,errors:[],total,duplicates};
+}

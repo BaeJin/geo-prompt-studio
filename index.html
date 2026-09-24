@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#122f35"><title>Prompt Studio · DATACAST GEO</title>
+  <link rel="stylesheet" href="styles.css"><script type="module" src="app.mjs"></script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="./"><span class="brand-symbol" aria-hidden="true">✳</span><span>DATACAST <b>GEO</b></span><span class="brand-divider"></span><span class="studio">Prompt Studio</span></a><div class="top-actions"><span id="save-state" class="save-state">브라우저에 자동 저장</span><button id="save-config" class="quiet">설정 저장 ↓</button><button id="load-config" class="quiet">설정 불러오기</button><input id="config-file" type="file" accept=".json,application/json" hidden></div></header>
+<main>
+  <section class="intro"><div><p class="eyebrow">BUILD QUESTIONS. EXPLORE POSSIBILITIES.</p><h1>프롬프트 만들기<span class="title-dot">.</span></h1><p class="lede">파라미터와 질문 템플릿을 연결하면, 필요한 질문이 한 번에 완성됩니다.</p></div><button id="reset-sample" class="sample-button"><span>AU / EN</span> 고객사 샘플 불러오기 ↗</button></section>
+  <section class="recipe" aria-label="생성 흐름"><div><span class="step-number">01</span><span>파라미터 세트</span><strong id="parameter-count">5</strong></div><span class="operator" aria-hidden="true">×</span><div><span class="step-number">02</span><span>템플릿</span><strong id="template-count">6</strong></div><span class="operator" aria-hidden="true">→</span><div class="recipe-result"><span class="step-number">03</span><span>생성된 프롬프트</span><strong id="result-count">29</strong></div><p>필요한 값만 조합 · 페르소나 미적용 샘플</p></section>
+  <div class="workspace">
+    <section class="editor panel" aria-label="생성 조건 편집">
+      <div class="editor-tabs" role="tablist" aria-label="입력 단계"><button id="parameters-tab" role="tab" aria-selected="true" aria-controls="parameters-panel" class="active">01 <span>파라미터</span><span id="parameter-badge" class="badge">5</span></button><button id="templates-tab" role="tab" aria-selected="false" aria-controls="templates-panel" tabindex="-1">02 <span>템플릿</span><span id="template-badge" class="badge">5</span></button></div>
+      <div id="parameters-panel" role="tabpanel" aria-labelledby="parameters-tab"><div class="section-heading"><div><h2>어떤 값을 조합할까요?</h2><p>국가, 차종, 모델 등을 한 줄에 하나씩 입력하세요.</p></div><button id="add-parameter-set" class="outline small">＋ 세트 추가</button></div><div id="parameter-list" class="set-list"></div></div>
+      <div id="templates-panel" role="tabpanel" aria-labelledby="templates-tab" hidden><div class="section-heading"><div><h2>어떤 질문을 만들까요?</h2><p><code>{Country}</code>처럼 이름을 넣어 값을 연결하세요.</p></div><button id="add-template-set" class="outline small">＋ 세트 추가</button></div><div id="template-list" class="set-list"></div></div>
+      <div class="editor-footer"><label class="check"><input id="dedupe" type="checkbox" checked> 동일한 질문은 한 번만 생성</label><button id="generate" class="primary">프롬프트 생성 <span aria-hidden="true">→</span></button></div>
+    </section>
+    <section class="preview panel" aria-label="생성 결과">
+      <div class="preview-heading"><div><p class="eyebrow">LIVE WORKSPACE</p><h2>생성 결과 <span id="preview-count" class="count-pill">29</span></h2></div><span id="result-state" class="status-pill">생성 완료</span></div>
+      <p id="result-summary" class="result-summary" aria-live="polite"></p>
+      <div id="errors" class="errors" role="alert" hidden></div>
+      <div class="search-row"><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="생성된 질문 검색" aria-label="생성된 질문 검색"></label><button id="select-all" class="quiet small">전체 선택</button></div>
+      <div class="results-head"><span>선택 / NO.</span><span>프롬프트 & 출처</span></div>
+      <div id="results" class="results"></div>
+      <div class="pagination"><span id="page-info"></span><div><button id="previous" class="quiet small" aria-label="이전 페이지">←</button><button id="next" class="quiet small" aria-label="다음 페이지">→</button></div></div>
+      <div class="export-footer"><div><strong id="selection-count">29개 선택</strong><p>Excel 호환 CSV · 한글 지원</p></div><button id="export" class="download">CSV 다운로드 <span aria-hidden="true">↓</span></button></div>
+    </section>
+  </div>
+  <footer class="page-footer"><span>DATACAST GEO <span class="footer-dot">/</span> PROMPT STUDIO</span><span>입력값은 이 브라우저에 저장됩니다. 질문 조합에는 AI 호출이 필요하지 않습니다.</span></footer>
+</main>
+<div id="toast" role="status" class="toast" hidden></div>
+<dialog id="confirm-dialog"><h2 id="confirm-title">변경하시겠어요?</h2><p id="confirm-description"></p><div class="dialog-actions"><button id="cancel-confirm" class="outline">취소</button><button id="accept-confirm" class="primary">확인</button></div></dialog>
+</body></html>

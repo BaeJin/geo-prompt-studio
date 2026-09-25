@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Response Explorer · DATACAST</title><link rel="stylesheet" href="styles.css"><script type="module" src="app.mjs"></script></head>
+<body>
+<header class="topbar"><a class="brand" href="./">Response Explorer <span>DATACAST</span></a><div class="top-actions"><a href="https://baejin.github.io/geo-prompt-studio/" target="_blank" rel="noopener">Prompt Studio</a><button id="import">데이터 열기</button><input id="data-file" type="file" accept=".json,application/json" hidden><button id="export" disabled>응답 CSV</button></div></header>
+<main>
+  <section id="loading" role="status">데이터를 불러오는 중입니다.</section>
+  <section id="empty" hidden><h1>응답 결과</h1><p id="load-message">BigQuery에서 내보낸 대시보드 데이터 파일을 여세요.</p><button id="open-data" class="primary">데이터 파일 열기</button></section>
+  <section id="dashboard" hidden>
+    <div class="page-heading"><h1>응답 결과</h1><span id="snapshot" class="muted"></span></div>
+    <div class="filters"><div class="counts" id="counts"></div><label>수집 모델<select id="provider"><option value="all">전체</option></select></label><label>분석 기준<select id="version"><option value="latest">응답별 최신 저장 결과</option></select></label></div>
+    <div id="scope-note" class="scope-note"></div>
+    <div class="workspace">
+      <aside class="prompt-panel" aria-label="프롬프트 목록"><div class="list-toolbar"><input id="prompt-search" type="search" placeholder="프롬프트 ID 또는 질문 검색" aria-label="프롬프트 검색"><span id="prompt-count" class="muted"></span></div><div id="prompt-list" class="prompt-list"></div></aside>
+      <section id="detail" class="detail" aria-label="프롬프트 상세">
+        <div class="prompt-heading"><code id="prompt-id"></code><h2 id="prompt-text"></h2></div>
+        <div id="response-tabs" class="response-tabs" aria-label="응답 모델"></div>
+        <div id="response-meta" class="response-meta"></div>
+        <div class="detail-grid">
+          <section class="panel source-panel" aria-label="응답 원문"><div class="panel-heading"><h3>응답 원문</h3><button id="clear-evidence" class="small" hidden>강조 해제</button></div><div id="source-text" class="source-text" tabindex="0"></div><details id="reasoning-wrap" class="reasoning" hidden><summary>추론 요약</summary><div id="reasoning-text"></div></details></section>
+          <section class="panel analysis-panel" aria-label="분석 결과"><div class="panel-heading"><h3>분석 결과</h3><button id="analysis-export" class="small" disabled>JSON</button></div>
+            <div class="analysis-picker"><label for="analysis-picker">저장 이력</label><select id="analysis-picker"></select></div><div id="analysis-meta" class="analysis-meta"></div>
+            <div id="no-analysis" class="blank" hidden>선택한 기준의 저장 결과가 없습니다.</div>
+            <div id="analysis-content"><div class="entity-tools"><input id="entity-search" type="search" aria-label="브랜드·모델 검색" placeholder="브랜드·모델 검색"><label class="check"><input id="recommended" type="checkbox">추천만</label></div><div id="entity-summary" class="muted entity-summary"></div><div class="entity-scroll"><table class="entity-table"><thead><tr><th>브랜드 · 모델</th><th>추천</th><th>순위</th><th>KBF</th></tr></thead><tbody id="entities"></tbody></table></div>
+              <section id="entity-detail" class="entity-detail" aria-label="개체 분석 상세"><h4 id="entity-title"></h4><div id="recommendation"></div><div class="assessment-filters"><select id="category" aria-label="KBF 분류"><option value="all">모든 KBF</option></select><select id="sentiment" aria-label="감성"><option value="all">모든 감성</option><option value="POSITIVE">긍정</option><option value="NEUTRAL">중립</option><option value="NEGATIVE">부정</option></select></div><div id="assessments"></div></section>
+            </div>
+          </section>
+        </div>
+      </section><div id="no-prompt" class="blank" hidden>검색 결과가 없습니다.</div>
+    </div>
+  </section>
+</main><div id="toast" class="toast" role="status" hidden></div>
+</body></html>

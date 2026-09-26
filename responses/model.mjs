@@ -24,12 +24,12 @@ function referenceAnalysis(ref){
   const output=ref.expected_output||{},entities=output.entities||[];
   return {...ref,analysis_id:ref.record_id,judge_name:ref.rubric_name||'AI 참조 초안',category_set_id:ref.category_set_id||'kbf_groups_v1',schema_version:ref.schema_version||(entities.some(e=>'is_top_recommended' in e)?3:2),entity_unit:ref.entity_unit||(output.aggregation?'master':'extracted'),entities,analyzed_at:ref.created_at||'',is_reference:true};
 }
-export function analysisLabel(a){return !a?'':a.entity_unit==='master'?'마스터 단위 · 파생 초안':a.schema_version===3?'개체 분석 v3 · 최우선 추천':a.schema_version===2?'개체 분석 v2 · 순위':'구형 언급 분석';}
+export function analysisLabel(a){return !a?'':a.entity_unit==='master'?'마스터 단위 · 파생 초안':a.schema_version===3?'개체 분석 v3 · 최우선 추천':a.schema_version===2?'이전 개체 분석 · 최우선 미제공':'이전 언급 분석 · 최우선 미제공';}
 export function recommendationEvidence(entity){
   const value=entity.recommendation_evidence;
   return typeof value==='string'?(value?[{evidence:value}]:[]):Array.isArray(value)?value.filter(v=>typeof v.evidence==='string'&&v.evidence):[];
 }
-export function priorityText(entity,analysis){return analysis?.schema_version===3?(entity.is_top_recommended?'예':'아니오'):entity.rank??'—';}
+export function priorityText(entity,analysis){return analysis?.schema_version===3&&typeof entity.is_top_recommended==='boolean'?(entity.is_top_recommended?'예':'아니오'):'미제공';}
 export function entitiesOf(analysis){
   if(!analysis)return [];
   if([2,3].includes(analysis.schema_version))return analysis.entities.map((e,i)=>({...e,key:String(i),kbf_assessments:e.kbf_assessments||[]}));

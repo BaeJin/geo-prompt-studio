@@ -57,8 +57,8 @@ function renderEntities(){
   const entities=currentEntities.filter(e=>(!only||e.is_recommended)&&(!topOnly||e.is_top_recommended)&&`${e.brand||''} ${e.model||''} ${e.family_name||''} ${(e.members||[]).map(m=>m.entity?.model||'').join(' ')}`.toLocaleLowerCase().includes(q));
   if(!entities.some(e=>e.key===entityKey))entityKey=entities[0]?.key||'';
   const legacy=![2,3].includes(currentAnalysis?.schema_version),top=currentAnalysis?.schema_version===3;
-  $('priority-heading').textContent=top?'최우선':'순위';
-  $('entity-summary').textContent=`${legacy?'언급':'개체'} ${entities.length}개 / 전체 ${currentEntities.length}개${legacy?' · 순위 정보 없음':top?' · 최우선은 최종 선택 여부':' · 이전 동률 순위'}`;
+  $('priority-heading').textContent='최우선 여부';
+  $('entity-summary').textContent=`${legacy?'언급':'개체'} ${entities.length}개 / 전체 ${currentEntities.length}개${top?' · 최우선은 최종 선택 여부':' · 이전 분석에는 최우선 여부가 없습니다'}`;
   $('entities').innerHTML=entities.map(e=>`<tr class="${e.key===entityKey?'active':''}"><td><button class="entity-name" data-entity="${esc(e.key)}" aria-pressed="${e.key===entityKey}"><span>${esc(e.brand||'브랜드 미지정')}</span><strong>${esc(entityName(e))}</strong></button></td><td>${e.is_recommended?'추천':'—'}</td><td>${esc(priorityText(e,currentAnalysis))}</td><td>${e.kbf_assessments.length}</td></tr>`).join('')||`<tr><td colspan="4" class="blank">${currentEntities.length?'검색 결과 없음':'분석 성공 · 추출된 항목 없음'}</td></tr>`;
   $('entity-detail').hidden=!entities.length;
   if(entities.length)renderEntity();
@@ -67,7 +67,7 @@ function entityName(e){return e.model||e.family_name||(e.scope==='OUT_OF_MASTER_
 function renderEntity(){
   const e=currentEntities.find(e=>e.key===entityKey);if(!e)return;
   $('entity-title').textContent=[e.brand,entityName(e)].filter(Boolean).join(' · ');
-  $('recommendation').innerHTML=(e.is_recommended?e.legacy?'해당 언급에서 추천':currentAnalysis.schema_version===3?`추천 · ${e.is_top_recommended?'최우선 선택':'최우선 선택 아님'}`:`추천${e.rank!=null?' · '+esc(e.rank)+'위 (이전 동률 순위)':''}`:'추천 대상 아님')+recommendationEvidence(e).map((r,i)=>`<br><button class="small" data-recommendation="${i}">${esc(r.raw_model?r.raw_model+' · 근거':'추천 근거 보기')}</button>`).join('');
+  $('recommendation').innerHTML=(e.is_recommended?e.legacy?'해당 언급에서 추천':'추천':'추천 대상 아님')+` · 최우선 추천: ${priorityText(e,currentAnalysis)}`+recommendationEvidence(e).map((r,i)=>`<br><button class="small" data-recommendation="${i}">${esc(r.raw_model?r.raw_model+' · 근거':'추천 근거 보기')}</button>`).join('');
   $('entity-identity').innerHTML=(e.brand_id||e.vehicle_model_id?`<details><summary>마스터 식별 정보</summary>브랜드 ID: ${esc(e.brand_id||'미연결')}<br>모델 ID: ${esc(e.vehicle_model_id||'미연결')}</details>`:'')+(e.members?.length?`<details><summary>원래 표기 ${e.members.length}개</summary>${e.members.map(m=>`<div>${esc([m.entity.brand,m.entity.model].filter(Boolean).join(' · '))}</div>`).join('')}</details>`:'');
   const selected=$('category').value,ids=[...new Set(e.kbf_assessments.map(k=>k.category_id||''))];
   $('category').innerHTML='<option value="all">모든 KBF</option>'+ids.map(id=>`<option value="${esc(id||'unclassified')}">${esc(categoryName(id))}</option>`).join('');

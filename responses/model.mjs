@@ -91,9 +91,9 @@ export function responseSignals(response,version,brand='hyundai',model='all'){
   if(!a||a.schema_version!==3||a.analysis_status==='PARTIAL')return null;
   const entities=a.entities.filter(e=>brandKey(e.brand)===brand&&(model==='all'||targetKey(e.model)===model));
   const assessments=entities.flatMap(e=>e.kbf_assessments||[]);
-  const positive=assessments.some(k=>k.sentiment==='POSITIVE'),negative=assessments.some(k=>k.sentiment==='NEGATIVE');
+  const positiveCount=assessments.filter(k=>k.sentiment==='POSITIVE').length,negativeCount=assessments.filter(k=>k.sentiment==='NEGATIVE').length;
   const bool=field=>entities.some(e=>e[field]===true)?true:entities.some(e=>typeof e[field]!=='boolean')?null:false;
-  return {exposure:entities.length>0,positive,recommended:bool('is_recommended'),top:bool('is_top_recommended'),mixed:positive&&negative};
+  return {exposure:entities.length>0,positive:positiveCount>negativeCount,positiveCount,negativeCount,recommended:bool('is_recommended'),top:bool('is_top_recommended'),mixed:positiveCount>0&&negativeCount>0};
 }
 export function aggregateResponses(responses,version,brand='hyundai',model='all'){
   const unique=[...new Map(responses.map(r=>[r.task_id,r])).values()];

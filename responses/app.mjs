@@ -1,4 +1,4 @@
-import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText,sortEntities,latestSchemaData,brandKey,targetKey,aggregateResponses,deploymentLabel,selectionState,updateSelection} from './model.mjs?v=8531335b7458';
+import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText,sortEntities,latestSchemaData,brandKey,targetKey,aggregateResponses,deploymentLabel,selectionState,updateSelection} from './model.mjs?v=a2a71547e2b3';
 const $=id=>document.getElementById(id), providerName={OPENAI:'OpenAI',GOOGLE:'Google',ANTHROPIC:'Anthropic'},sentiments={POSITIVE:'긍정',NEUTRAL:'중립',NEGATIVE:'부정'};
 let data,groups=[],promptId='',responseId='',analysisId='',entityKey='',currentResponse,currentAnalysis,currentEntities=[],evidence='',timer;
 let drill='',population=[],selectedResponses=new Set(),selectionCandidates=[];
@@ -62,7 +62,7 @@ function updateTargetModels(){
 function renderOverview(result,filteredCount){
   $('population-note').textContent=`모집단 ${result.total}건 · 분석 없음·부분 결과 ${filteredCount-result.total}건 제외 · 막대를 누르면 해당 응답 보기`;
   $('funnel').innerHTML=result.metrics.map(m=>`<button class="funnel-row ${drill===m.key?'selected':''}" data-metric="${m.key}" aria-pressed="${drill===m.key}"><span>${metricNames[m.key]}</span><meter min="0" max="${result.total||1}" value="${m.count}" aria-label="${metricNames[m.key]} 비율">${percent(m.count,result.total)}</meter><strong>${percent(m.count,result.total)}</strong><small>${m.count} / ${result.total}${m.unknown?' · 미판정 '+m.unknown:''}</small></button>`).join('');
-  $('mixed-note').textContent=`긍정·부정 혼재 ${result.mixed}건 · 모든 비율은 동일 모집단 기준`;
+  $('mixed-note').textContent=`긍정 노출: 긍정 수 > 부정 수 · 긍정·부정 혼재 ${result.mixed}건 · 동일 모집단 기준`;
   $('provider-summary').innerHTML=[...new Set(population.map(r=>r.provider))].sort().map(p=>{
     const a=aggregateResponses(population.filter(r=>r.provider===p),version(),$('target-brand').value,$('target-model').value);
     return `<tr><th scope="row">${esc(providerName[p]||p)}</th><td>${a.total}</td>${a.metrics.map(m=>`<td title="${m.count}/${a.total}${m.unknown?' · 미판정 '+m.unknown:''}">${percent(m.count,a.total)}</td>`).join('')}</tr>`;

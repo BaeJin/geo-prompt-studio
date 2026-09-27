@@ -6,7 +6,7 @@ export function validateData(data) {
     ids.add(r.task_id);
     for(const a of r.analyses){
       if(a.task_id!==r.task_id||!a.analysis_id||!Array.isArray(a.entities)||!Array.isArray(a.mentions))throw Error('분석과 응답의 연결이 올바르지 않습니다.');
-      if(a.schema_version===3&&a.entities.some(e=>typeof e.is_top_recommended!=='boolean'||(e.is_top_recommended&&!e.is_recommended)))throw Error('최우선 추천 데이터가 올바르지 않습니다.');
+      if(a.schema_version===3&&a.entities.some(e=>(typeof e.is_top_recommended!=='boolean'&&e.is_top_recommended!==null)||(e.is_top_recommended===true&&e.is_recommended!==true)))throw Error('최우선 추천 데이터가 올바르지 않습니다.');
     }
   }
   return data;
@@ -88,7 +88,7 @@ export function targetKey(value){return String(value||'').normalize('NFKC').trim
 export function brandKey(value){const key=targetKey(value);return ['현대','현대자동차','hyundaimotor','hyundaimotors'].includes(key)?'hyundai':key;}
 export function responseSignals(response,version,brand='hyundai',model='all'){
   const a=selectAnalysis(response,version);
-  if(!a||a.schema_version!==3)return null;
+  if(!a||a.schema_version!==3||a.analysis_status==='PARTIAL')return null;
   const entities=a.entities.filter(e=>brandKey(e.brand)===brand&&(model==='all'||targetKey(e.model)===model));
   const assessments=entities.flatMap(e=>e.kbf_assessments||[]);
   const positive=assessments.some(k=>k.sentiment==='POSITIVE'),negative=assessments.some(k=>k.sentiment==='NEGATIVE');
@@ -100,4 +100,16 @@ export function aggregateResponses(responses,version,brand='hyundai',model='all'
   const rows=unique.map(response=>({response,signals:responseSignals(response,version,brand,model)})).filter(r=>r.signals);
   const metrics=['exposure','positive','recommended','top'].map(key=>({key,count:rows.filter(r=>r.signals[key]===true).length,unknown:rows.filter(r=>r.signals[key]===null).length}));
   return {rows,total:rows.length,excluded:unique.length-rows.length,mixed:rows.filter(r=>r.signals.mixed).length,metrics};
+}
+export function deploymentLabel(data,id){
+  if(!id||!data.production)return '';
+  if(data.production.current_judge_id===id)return '현재 운영';
+  return data.production.previous_judge_ids?.includes(id)?'이전 운영':'';
+}
+export function selectionState(responses,selected){
+  const count=responses.filter(r=>selected.has(r.task_id)).length;
+  return {count,checked:responses.length>0&&count===responses.length,indeterminate:count>0&&count<responses.length};
+}
+export function updateSelection(selected,responses,include){
+  const next=new Set(selected);for(const r of responses)if(include)next.add(r.task_id);else next.delete(r.task_id);return next;
 }

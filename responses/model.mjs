@@ -72,3 +72,32 @@ export function highlighted(text,evidence){
   const at=evidence?text.indexOf(evidence):-1;
   return at<0?escapeHTML(text):escapeHTML(text.slice(0,at))+'<mark id="evidence-match">'+escapeHTML(evidence)+'</mark>'+escapeHTML(text.slice(at+evidence.length));
 }
+
+// Aggregate one selected analysis per response, never analysis history rows.
+export function latestSchemaData(input){
+  const responses=input.responses.map(r=>({...r,analyses:r.analyses.filter(a=>a.schema_version===3),references:r.references.filter(a=>a.schema_version===3)})).filter(r=>r.analyses.length);
+  const versions=new Map();
+  for(const r of responses)for(const a of r.analyses){
+    if(!versions.has(a.judge_version_id))versions.set(a.judge_version_id,{id:a.judge_version_id,name:a.judge_name,ids:new Set(),results:0});
+    const v=versions.get(a.judge_version_id);v.ids.add(r.task_id);v.results++;
+  }
+  return {...input,responses,excluded_legacy_responses:(input.excluded_legacy_responses||0)+input.responses.length-responses.length,
+    versions:[...versions.values()].map(({ids,...v})=>({...v,responses:ids.size})).sort((a,b)=>b.responses-a.responses||a.id.localeCompare(b.id))};
+}
+export function targetKey(value){return String(value||'').normalize('NFKC').trim().toLocaleLowerCase().replace(/[\s_-]+/g,'');}
+export function brandKey(value){const key=targetKey(value);return ['현대','현대자동차','hyundaimotor','hyundaimotors'].includes(key)?'hyundai':key;}
+export function responseSignals(response,version,brand='hyundai',model='all'){
+  const a=selectAnalysis(response,version);
+  if(!a||a.schema_version!==3)return null;
+  const entities=a.entities.filter(e=>brandKey(e.brand)===brand&&(model==='all'||targetKey(e.model)===model));
+  const assessments=entities.flatMap(e=>e.kbf_assessments||[]);
+  const positive=assessments.some(k=>k.sentiment==='POSITIVE'),negative=assessments.some(k=>k.sentiment==='NEGATIVE');
+  const bool=field=>entities.some(e=>e[field]===true)?true:entities.some(e=>typeof e[field]!=='boolean')?null:false;
+  return {exposure:entities.length>0,positive,recommended:bool('is_recommended'),top:bool('is_top_recommended'),mixed:positive&&negative};
+}
+export function aggregateResponses(responses,version,brand='hyundai',model='all'){
+  const unique=[...new Map(responses.map(r=>[r.task_id,r])).values()];
+  const rows=unique.map(response=>({response,signals:responseSignals(response,version,brand,model)})).filter(r=>r.signals);
+  const metrics=['exposure','positive','recommended','top'].map(key=>({key,count:rows.filter(r=>r.signals[key]===true).length,unknown:rows.filter(r=>r.signals[key]===null).length}));
+  return {rows,total:rows.length,excluded:unique.length-rows.length,mixed:rows.filter(r=>r.signals.mixed).length,metrics};
+}

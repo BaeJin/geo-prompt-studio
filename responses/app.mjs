@@ -1,29 +1,53 @@
-import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText,sortEntities} from './model.mjs?v=fa9387ecafdc';
+import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText,sortEntities,latestSchemaData,brandKey,targetKey,aggregateResponses} from './model.mjs?v=0bcd37bbe92e';
 const $=id=>document.getElementById(id), providerName={OPENAI:'OpenAI',GOOGLE:'Google',ANTHROPIC:'Anthropic'},sentiments={POSITIVE:'긍정',NEUTRAL:'중립',NEGATIVE:'부정'};
 let data,groups=[],promptId='',responseId='',analysisId='',entityKey='',currentResponse,currentAnalysis,currentEntities=[],evidence='',timer;
+let drill='',population=[];
+const metricNames={exposure:'노출',positive:'긍정 노출',recommended:'추천',top:'최우선 추천'};
+const percent=(count,total)=>total?(count/total*100).toFixed(1)+'%':'—';
 const date=value=>value?new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
 function toast(message){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(timer);timer=setTimeout(()=>$('toast').hidden=true,3500);}
 function categoryName(id){if(!id)return '미분류';const c=data.categories.find(c=>c.category_set_id===currentAnalysis?.category_set_id&&c.rfp_id===id);return c?.rfp_name||id;}
 function version(){return $('version').value;}
 function setData(value){
-  data=validateData(value);$('loading').hidden=true;$('empty').hidden=true;$('dashboard').hidden=false;$('export').disabled=false;
+  data=validateData(latestSchemaData(value));drill='';$('loading').hidden=true;$('empty').hidden=true;$('dashboard').hidden=false;$('export').disabled=false;
   $('snapshot').textContent=`스냅샷 ${date(data.exported_at)} KST`;
   $('provider').innerHTML='<option value="all">전체</option>'+[...new Set(data.responses.map(r=>r.provider))].sort().map(p=>`<option value="${esc(p)}">${esc(providerName[p]||p)}</option>`).join('');
   const rubrics=new Map();
   for(const r of data.responses)for(const ref of r.references)if(ref.rubric_id){if(!rubrics.has(ref.rubric_id))rubrics.set(ref.rubric_id,{name:ref.rubric_name||ref.rubric_id,ids:new Set()});rubrics.get(ref.rubric_id).ids.add(r.task_id);}
   $('version').innerHTML='<option value="latest">응답별 최신 저장 결과</option><optgroup label="Judge 분석">'+data.versions.slice().sort((a,b)=>b.responses-a.responses).map(v=>`<option value="${esc(v.id)}">${esc(v.name)} · ${v.responses}응답</option>`).join('')+'</optgroup><optgroup label="AI 참조 초안"><option value="reference">응답별 최신 참조 초안</option>'+[...rubrics].map(([id,r])=>`<option value="reference:${esc(id)}">${esc(r.name)} · ${r.ids.size}응답</option>`).join('')+'</optgroup>';
+  $('version').value=data.versions[0]?.id||'latest';
+  const brands=new Map();for(const r of data.responses)for(const a of [...r.analyses,...r.references.map(x=>({entities:x.expected_output?.entities||[]}))])for(const e of a.entities)if(e.brand)brands.set(brandKey(e.brand),e.brand);
+  if(!brands.has('hyundai'))brands.set('hyundai','Hyundai');
+  $('target-brand').innerHTML=[...brands].sort((a,b)=>a[1].localeCompare(b[1])).map(([key,name])=>`<option value="${esc(key)}">${esc(name)}</option>`).join('');$('target-brand').value='hyundai';updateTargetModels();
   const hash=new URLSearchParams(location.hash.slice(1));promptId=hash.get('prompt')||'';responseId=hash.get('response')||'';analysisId='';entityKey='';render();
 }
 function render(){
-  groups=groupPrompts(data.responses,$('prompt-search').value,$('provider').value);
+  const filtered=groupPrompts(data.responses,$('prompt-search').value,$('provider').value).flatMap(g=>g.responses);
+  const aggregate=aggregateResponses(filtered,version(),$('target-brand').value,$('target-model').value);
+  population=aggregate.rows.map(row=>row.response);renderOverview(aggregate,filtered.length);
+  groups=groupPrompts(aggregate.rows.filter(row=>!drill||row.signals[drill]===true).map(row=>row.response));
   if(!groups.some(g=>g.id===promptId)){promptId=groups[0]?.id||'';responseId='';analysisId='';}
   const visible=groups.flatMap(g=>g.responses),analysed=coverage(visible,version());
-  $('counts').innerHTML=`<span>프롬프트<strong>${groups.length}</strong></span><span>응답<strong>${visible.length}</strong></span><span>${isReferenceVersion(version())?'참조 초안':'분석'}<strong>${analysed}/${visible.length}</strong></span>`;
-  $('scope-note').textContent=version()==='latest'?'응답마다 가장 최근에 저장된 분석을 표시합니다. 서로 다른 Judge 버전과 실험 결과가 포함됩니다.':isReferenceVersion(version())?'AI 참조 초안입니다. 마스터 단위 파생 초안은 오프라인 검토 자료이며, 운영 Judge 분석과 구분됩니다.':'선택한 Judge 버전의 최신 저장 결과를 표시합니다. 결과 없음은 미언급을 의미하지 않습니다.';
+  $('counts').innerHTML=`<span>프롬프트<strong>${new Set(population.map(r=>r.prompt_id)).size}</strong></span><span>모집단<strong>${population.length}</strong></span><span>스키마<strong>v3</strong></span>`;
+  $('scope-note').textContent=(version()==='latest'?'응답별 최신 v3 분석 · 서로 다른 Judge 버전과 실험 결과 포함':isReferenceVersion(version())?'AI 참조 초안 · 독립 검수 전 자료':'동일 Judge 버전 · 응답별 최신 v3 분석')+` · 구 스키마만 있는 응답 ${data.excluded_legacy_responses||0}건 제외`;
+  $('drill-note').textContent=drill?`${metricNames[drill]} 해당 ${visible.length}건`:`전체 ${visible.length}건`;$('clear-drill').hidden=!drill;
   $('prompt-count').textContent=groups.length+'개 프롬프트';
   $('prompt-list').innerHTML=groups.map(g=>`<button class="prompt-item ${g.id===promptId?'active':''}" data-prompt="${esc(g.id)}" ${g.id===promptId?'aria-current="true"':''}><code>${esc(g.id)}</code><span>${esc(g.text)}</span><small>응답 ${g.responses.length} · ${isReferenceVersion(version())?'초안':'분석'} ${coverage(g.responses,version())}</small></button>`).join('')||'<div class="blank">검색 결과 없음</div>';
   $('detail').hidden=!groups.length;$('no-prompt').hidden=!!groups.length;$('export').disabled=!visible.length;
   if(groups.length)renderPrompt();
+}
+function updateTargetModels(){
+  const models=new Map();for(const r of data.responses)for(const a of [selectAnalysis(r,version())].filter(Boolean))for(const e of a.entities)if(brandKey(e.brand)===$('target-brand').value&&e.model&&targetKey(e.model)!=='null')models.set(targetKey(e.model),e.model);
+  $('target-model').innerHTML='<option value="all">브랜드 전체</option>'+[...models].sort((a,b)=>a[1].localeCompare(b[1],'ko',{numeric:true})).map(([key,name])=>`<option value="${esc(key)}">${esc(name)}</option>`).join('');
+}
+function renderOverview(result,filteredCount){
+  $('population-note').textContent=`모집단 ${result.total}건 · 선택한 분석 기준 없음 ${filteredCount-result.total}건 제외 · 막대를 누르면 해당 응답 보기`;
+  $('funnel').innerHTML=result.metrics.map(m=>`<button class="funnel-row ${drill===m.key?'selected':''}" data-metric="${m.key}" aria-pressed="${drill===m.key}"><span>${metricNames[m.key]}</span><meter min="0" max="${result.total||1}" value="${m.count}" aria-label="${metricNames[m.key]} 비율">${percent(m.count,result.total)}</meter><strong>${percent(m.count,result.total)}</strong><small>${m.count} / ${result.total}${m.unknown?' · 미판정 '+m.unknown:''}</small></button>`).join('');
+  $('mixed-note').textContent=`긍정·부정 혼재 ${result.mixed}건 · 모든 비율은 동일 모집단 기준`;
+  $('provider-summary').innerHTML=[...new Set(population.map(r=>r.provider))].sort().map(p=>{
+    const a=aggregateResponses(population.filter(r=>r.provider===p),version(),$('target-brand').value,$('target-model').value);
+    return `<tr><th scope="row">${esc(providerName[p]||p)}</th><td>${a.total}</td>${a.metrics.map(m=>`<td title="${m.count}/${a.total}${m.unknown?' · 미판정 '+m.unknown:''}">${percent(m.count,a.total)}</td>`).join('')}</tr>`;
+  }).join('')||'<tr><td colspan="6" class="blank">집계할 응답이 없습니다.</td></tr>';
 }
 function renderPrompt(){
   const g=groups.find(g=>g.id===promptId);
@@ -50,6 +74,7 @@ function renderAnalysis(){
   $('analysis-export').disabled=!a;$('no-analysis').hidden=!!a;$('analysis-content').hidden=!a;
   $('analysis-meta').innerHTML=!a?'':a.is_reference?`<span class="tag draft">${esc(a.author_kind)} · ${esc(a.review_status)}</span> · ${esc(analysisLabel(a))} · revision ${a.revision}${a.unresolved_ambiguities?' · 미해결 '+a.unresolved_ambiguities+'건':''}<details><summary>초안 식별 정보</summary>${esc(a.record_id)}<br>기준: ${esc(a.rubric_name||a.rubric_id)}${a.expected_output?.catalog_id?'<br>마스터 카탈로그: '+esc(a.expected_output.catalog_id):''}</details>`:`${esc(a.judge_model_name||a.judge_model_id)} · <span class="tag">${esc(analysisLabel(a))}</span><details><summary>분석 식별 정보</summary>분석 ID: ${esc(a.analysis_id)}<br>실행: ${esc(a.analysis_run_id)}<br>Judge: ${esc(a.judge_version_id)}</details>`;
   currentEntities=entitiesOf(a);entityKey='';$('entity-search').value='';$('recommended').checked=false;$('top-only').checked=false;$('top-only-wrap').hidden=a?.schema_version!==3;$('category').value='all';$('sentiment').value='all';
+  entityKey=currentEntities.find(e=>brandKey(e.brand)===$('target-brand').value&&($('target-model').value==='all'||targetKey(e.model)===$('target-model').value)&&(!drill||drill==='exposure'||(drill==='positive'?e.kbf_assessments.some(k=>k.sentiment==='POSITIVE'):e[drill==='top'?'is_top_recommended':'is_recommended']===true)))?.key||'';
   if(a)renderEntities();
 }
 function renderEntities(){
@@ -80,7 +105,10 @@ function renderAssessments(){
 }
 $('prompt-list').onclick=e=>{const b=e.target.closest('[data-prompt]');if(b){promptId=b.dataset.prompt;responseId='';analysisId='';render();}};
 $('response-tabs').onclick=e=>{const b=e.target.closest('[data-response]');if(b){responseId=b.dataset.response;analysisId='';renderPrompt();}};
-$('provider').onchange=$('version').onchange=()=>{analysisId='';render();};$('prompt-search').oninput=render;
+$('provider').onchange=()=>{analysisId='';drill='';render();};$('version').onchange=()=>{analysisId='';drill='';updateTargetModels();render();};$('prompt-search').oninput=()=>{drill='';render();};
+$('target-brand').onchange=()=>{updateTargetModels();drill='';render();};$('target-model').onchange=()=>{drill='';render();};
+$('funnel').onclick=e=>{const b=e.target.closest('[data-metric]');if(b){drill=drill===b.dataset.metric?'':b.dataset.metric;render();document.querySelector('.detail-heading').scrollIntoView({block:'start'});}};
+$('clear-drill').onclick=()=>{drill='';render();};
 $('analysis-picker').onchange=e=>{analysisId=e.target.value;currentAnalysis=selectAnalysis(currentResponse,version(),analysisId);evidence='';renderSource();renderAnalysis();};
 $('entity-search').oninput=$('recommended').onchange=$('top-only').onchange=$('entity-sort').onchange=renderEntities;
 $('entities').onclick=e=>{const b=e.target.closest('[data-entity]');if(b){entityKey=b.dataset.entity;$('category').value='all';$('sentiment').value='all';renderEntities();}};

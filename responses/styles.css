@@ -4,3 +4,5 @@
 @media(min-width:1101px){.source-panel,.prompt-panel{position:sticky;top:16px}}
 
 #entity-identity{font-size:11px;color:var(--muted);overflow-wrap:anywhere}#entity-identity details{margin:7px 0}#entity-identity summary{cursor:pointer}.entity-tools{flex-wrap:wrap}.entity-tools input[type=search]{min-width:120px}.entity-table th:first-child{width:52%}
+
+.entity-order{display:flex;align-items:center;justify-content:flex-end;gap:7px;padding:8px 12px 0;font-size:11px;color:var(--muted)}.entity-order select{font-size:11px;padding:4px 7px;max-width:70%}

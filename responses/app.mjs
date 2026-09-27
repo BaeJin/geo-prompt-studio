@@ -1,4 +1,4 @@
-import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText} from './model.mjs?v=efc7390aea82';
+import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText,sortEntities} from './model.mjs?v=a642352eda08';
 const $=id=>document.getElementById(id), providerName={OPENAI:'OpenAI',GOOGLE:'Google',ANTHROPIC:'Anthropic'},sentiments={POSITIVE:'긍정',NEUTRAL:'중립',NEGATIVE:'부정'};
 let data,groups=[],promptId='',responseId='',analysisId='',entityKey='',currentResponse,currentAnalysis,currentEntities=[],evidence='',timer;
 const date=value=>value?new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
@@ -54,7 +54,7 @@ function renderAnalysis(){
 }
 function renderEntities(){
   const q=$('entity-search').value.trim().toLocaleLowerCase(),only=$('recommended').checked,topOnly=$('top-only').checked;
-  const entities=currentEntities.filter(e=>(!only||e.is_recommended)&&(!topOnly||e.is_top_recommended)&&`${e.brand||''} ${e.model||''} ${e.family_name||''} ${(e.members||[]).map(m=>m.entity?.model||'').join(' ')}`.toLocaleLowerCase().includes(q));
+  const entities=sortEntities(currentEntities.filter(e=>(!only||e.is_recommended)&&(!topOnly||e.is_top_recommended)&&`${e.brand||''} ${e.model||''} ${e.family_name||''} ${(e.members||[]).map(m=>m.entity?.model||'').join(' ')}`.toLocaleLowerCase().includes(q)),$('entity-sort').value,currentAnalysis);
   if(!entities.some(e=>e.key===entityKey))entityKey=entities[0]?.key||'';
   const legacy=![2,3].includes(currentAnalysis?.schema_version),top=currentAnalysis?.schema_version===3;
   $('priority-heading').textContent='최우선 여부';
@@ -82,7 +82,7 @@ $('prompt-list').onclick=e=>{const b=e.target.closest('[data-prompt]');if(b){pro
 $('response-tabs').onclick=e=>{const b=e.target.closest('[data-response]');if(b){responseId=b.dataset.response;analysisId='';renderPrompt();}};
 $('provider').onchange=$('version').onchange=()=>{analysisId='';render();};$('prompt-search').oninput=render;
 $('analysis-picker').onchange=e=>{analysisId=e.target.value;currentAnalysis=selectAnalysis(currentResponse,version(),analysisId);evidence='';renderSource();renderAnalysis();};
-$('entity-search').oninput=$('recommended').onchange=$('top-only').onchange=renderEntities;
+$('entity-search').oninput=$('recommended').onchange=$('top-only').onchange=$('entity-sort').onchange=renderEntities;
 $('entities').onclick=e=>{const b=e.target.closest('[data-entity]');if(b){entityKey=b.dataset.entity;$('category').value='all';$('sentiment').value='all';renderEntities();}};
 $('category').onchange=$('sentiment').onchange=renderAssessments;
 function showEvidence(value){evidence=value;renderSource();if(evidence&&currentResponse.response_text.includes(evidence)){$('source-text').focus({preventScroll:true});if(innerWidth<=1100)$('source-text').scrollIntoView({block:'center'});}}

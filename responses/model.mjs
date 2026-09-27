@@ -30,13 +30,16 @@ export function recommendationEvidence(entity){
   return typeof value==='string'?(value?[{evidence:value}]:[]):Array.isArray(value)?value.filter(v=>typeof v.evidence==='string'&&v.evidence):[];
 }
 export function priorityText(entity,analysis){return analysis?.schema_version===3&&typeof entity.is_top_recommended==='boolean'?(entity.is_top_recommended?'예':'아니오'):'미제공';}
-export function sortEntities(entities,order='original',analysis){
+export function sortEntities(entities,order='default',analysis){
   const rows=entities.slice();
   const compare=(a,b)=>String(a||'').localeCompare(String(b||''),'ko',{numeric:true,sensitivity:'base'});
   const model=e=>e.model||e.family_name||'';
   const byModel=(a,b)=>Number(!model(a))-Number(!model(b))||compare(model(a),model(b))||compare(a.brand,b.brand);
   const byBrand=(a,b)=>Number(!a.brand)-Number(!b.brand)||compare(a.brand,b.brand)||byModel(a,b);
   const top=e=>analysis?.schema_version===3&&typeof e.is_top_recommended==='boolean'?(e.is_top_recommended?0:1):2;
+  const recommended=e=>typeof e.is_recommended==='boolean'?(e.is_recommended?0:1):2;
+  if(order==='default')rows.sort((a,b)=>top(a)-top(b)||recommended(a)-recommended(b)||byBrand(a,b));
+  if(order==='recommended')rows.sort((a,b)=>recommended(a)-recommended(b)||byBrand(a,b));
   if(order==='model-asc')rows.sort(byModel);
   if(order==='model-desc')rows.sort((a,b)=>Number(!model(a))-Number(!model(b))||compare(model(b),model(a))||compare(a.brand,b.brand));
   if(order==='brand')rows.sort(byBrand);

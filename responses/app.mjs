@@ -1,4 +1,4 @@
-import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText,sortEntities,latestSchemaData,brandKey,targetKey,aggregateResponses,deploymentLabel,selectionState,updateSelection,analysisStatusText,sentimentScore,promptPresentation,responseScope,promptFilterOptions} from './model.mjs?v=b6249cec836f';
+import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText,sortEntities,latestSchemaData,brandKey,targetKey,aggregateResponses,deploymentLabel,selectionState,updateSelection,analysisStatusText,sentimentScore,promptPresentation,responseScope,promptFilterOptions,withPromptMetadata} from './model.mjs?v=2260aa9006db';
 const $=id=>document.getElementById(id), providerName={OPENAI:'OpenAI',GOOGLE:'Google',ANTHROPIC:'Anthropic'},sentiments={POSITIVE:'긍정',NEUTRAL:'중립',NEGATIVE:'부정'};
 let data,groups=[],promptId='',responseId='',analysisId='',entityKey='',currentResponse,currentAnalysis,currentEntities=[],evidence='',timer;
 let activeView='responses',browsePage=0,expandedPrompts=new Set(),sourceResponse=null;
@@ -16,7 +16,7 @@ function categoryName(id){if(!id)return '미분류';const c=data.categories.find
 function version(){return $('version').value;}
 function setData(value){
   if(value.source_kind!=='customer_export'||value.source!=='hyundai-global-search.global_geo')throw Error('고객사 DB에서 갱신한 데이터 파일을 사용하세요.');
-  data=validateData(latestSchemaData(value));drill='';selectedResponses=new Set();browsePage=0;expandedPrompts=new Set();
+  data=withPromptMetadata(validateData(latestSchemaData(value)));drill='';selectedResponses=new Set();browsePage=0;expandedPrompts=new Set();
   try{const saved=JSON.parse(localStorage.getItem(SELECTION_STORAGE)||'null');if(saved?.source===data.source&&saved?.version===data.export_info?.export_version&&Array.isArray(saved.ids))selectedResponses=new Set(saved.ids.filter(id=>data.responses.some(r=>r.task_id===id)));}catch{}
   $('loading').hidden=true;$('empty').hidden=true;$('dashboard').hidden=false;$('export').disabled=false;
   $('snapshot').textContent=`${date(data.exported_at)} KST`;

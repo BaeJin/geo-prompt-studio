@@ -100,9 +100,24 @@ export function promptPresentation(text){
   return {title:first.length>72?first.slice(0,69)+'…':first,kind:'질문',market:''};
 }
 
-// These are display facets recovered only from exact, known question formats.
-// They do not establish a stored template ID or historical Studio provenance.
-export function promptFacets(text){
+export function withPromptMetadata(data){
+  const prompts=new Map((data.prompts||[]).map(p=>[p.prompt_id,p]));
+  return {...data,responses:data.responses.map(r=>({...r,prompt_metadata:prompts.get(r.prompt_id)}))};
+}
+// Current exports supply authoritative prompt metadata; exact question formats
+// are a display-only fallback for older files without those columns.
+export function promptFacets(input){
+  const metadata=typeof input==='object'&&input!==null?input.prompt_metadata:null;
+  if(metadata&&Object.hasOwn(metadata,'template_name')){
+    const params=[];
+    if(!metadata.template_name||!metadata.template)return {template:'미지정',params};
+    for(let i=1;i<=5;i++){
+      const name=metadata[`param${i}_name`],value=metadata[`param${i}_value`];
+      if(typeof name==='string'&&typeof value==='string')params.push({name,value,key:JSON.stringify([name,value])});
+    }
+    return {template:metadata.template_name,params};
+  }
+  const text=typeof input==='string'?input:input?.prompt_text;
   const formats=[
     ['차량 추천',/^What is the best (.+) to buy in (.+) right now\?$/,['Category','Country']],
     ['차량 비교',/^How does Hyundai (.+) compare to (.+) in (.+)\?$/,['Hyundai','Other','Country']],
@@ -116,7 +131,7 @@ export function promptFacets(text){
   return {template:'미지정',params:[]};
 }
 export function promptFilterOptions(responses,template='all'){
-  const facets=responses.map(r=>promptFacets(r.prompt_text));
+  const facets=responses.map(r=>promptFacets(r));
   const templates=[...new Set(facets.map(f=>f.template))].sort((a,b)=>a.localeCompare(b,'ko'));
   const params=new Map();
   for(const f of facets)if(matchesFilter(template,f.template))for(const p of f.params)params.set(p.key,p);
@@ -125,7 +140,7 @@ export function promptFilterOptions(responses,template='all'){
 export function responseScope(responses,selectedIds,query='',provider='all',model='all',template='all',param='all'){
   const candidates=groupPrompts(responses,query).flatMap(g=>g.responses).filter(r=>{
     if(!matchesFilter(provider,r.provider)||!matchesFilter(model,r.model_name))return false;
-    const facets=promptFacets(r.prompt_text);
+    const facets=promptFacets(r);
     return matchesFilter(template,facets.template)&&(isAllFilter(param)||facets.params.some(p=>matchesFilter(param,p.key)));
   });
   return {candidates,selected:candidates.filter(r=>selectedIds.has(r.task_id))};

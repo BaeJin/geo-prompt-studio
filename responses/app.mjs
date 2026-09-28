@@ -1,4 +1,4 @@
-import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText,sortEntities,latestSchemaData,brandKey,targetKey,aggregateResponses,deploymentLabel,selectionState,updateSelection} from './model.mjs?v=a2a71547e2b3';
+import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText,sortEntities,latestSchemaData,brandKey,targetKey,aggregateResponses,deploymentLabel,selectionState,updateSelection,analysisStatusText} from './model.mjs?v=c389f4ad9a67';
 const $=id=>document.getElementById(id), providerName={OPENAI:'OpenAI',GOOGLE:'Google',ANTHROPIC:'Anthropic'},sentiments={POSITIVE:'긍정',NEUTRAL:'중립',NEGATIVE:'부정'};
 let data,groups=[],promptId='',responseId='',analysisId='',entityKey='',currentResponse,currentAnalysis,currentEntities=[],evidence='',timer;
 let drill='',population=[],selectedResponses=new Set(),selectionCandidates=[];
@@ -9,14 +9,15 @@ function toast(message){$('toast').textContent=message;$('toast').hidden=false;c
 function categoryName(id){if(!id)return '미분류';const c=data.categories.find(c=>c.category_set_id===currentAnalysis?.category_set_id&&c.rfp_id===id);return c?.rfp_name||id;}
 function version(){return $('version').value;}
 function setData(value){
+  if(value.source_kind!=='customer_export'||value.source!=='hyundai-global-search.global_geo')throw Error('고객사 DB에서 갱신한 데이터 파일을 사용하세요.');
   data=validateData(latestSchemaData(value));drill='';selectedResponses=new Set(data.responses.map(r=>r.task_id));$('loading').hidden=true;$('empty').hidden=true;$('dashboard').hidden=false;$('export').disabled=false;
   $('snapshot').textContent=`스냅샷 ${date(data.exported_at)} KST`;
   $('provider').innerHTML='<option value="all">전체</option>'+[...new Set(data.responses.map(r=>r.provider))].sort().map(p=>`<option value="${esc(p)}">${esc(providerName[p]||p)}</option>`).join('');
   const rubrics=new Map();
   for(const r of data.responses)for(const ref of r.references)if(ref.rubric_id){if(!rubrics.has(ref.rubric_id))rubrics.set(ref.rubric_id,{name:ref.rubric_name||ref.rubric_id,ids:new Set()});rubrics.get(ref.rubric_id).ids.add(r.task_id);}
-  $('version').innerHTML='<option value="latest">응답별 최신 저장 결과</option><optgroup label="Judge 분석">'+data.versions.slice().sort((a,b)=>b.responses-a.responses).map(v=>`<option value="${esc(v.id)}">${deploymentLabel(data,v.id)?'['+deploymentLabel(data,v.id)+'] ':''}${esc(v.name)} · ${v.responses}응답</option>`).join('')+'</optgroup><optgroup label="AI 참조 초안"><option value="reference">응답별 최신 참조 초안</option>'+[...rubrics].map(([id,r])=>`<option value="reference:${esc(id)}">${esc(r.name)} · ${r.ids.size}응답</option>`).join('')+'</optgroup>';
-  $('version').value=data.versions.some(v=>v.id===data.production?.current_judge_id)?data.production.current_judge_id:data.versions[0]?.id||'latest';
-  $('production-note').innerHTML=data.production?`<span class="tag production">운영 채택 모델</span> <strong>${esc(data.production.model_name)}</strong> · ${esc(data.production.parameters?.generation_config?.thinking_level||'')} · 출력 ${esc(data.production.parameters?.generation_config?.max_output_tokens||'')} <span class="muted"> · 운영 확인 ${esc(date(data.production.verified_at))} KST</span>`:'운영 채택 정보 미제공';
+  $('version').innerHTML=data.versions.map(v=>`<option value="${esc(v.id)}">${esc(v.name)} · ${v.responses}응답</option>`).join('');
+  $('version').value=data.versions[0]?.id||'latest';
+  $('production-note').textContent='분석 모델의 운영 채택 정보는 고객사 DB에 제공되지 않습니다.';
   const brands=new Map();for(const r of data.responses)for(const a of [...r.analyses,...r.references.map(x=>({entities:x.expected_output?.entities||[]}))])for(const e of a.entities)if(e.brand)brands.set(brandKey(e.brand),e.brand);
   if(!brands.has('hyundai'))brands.set('hyundai','Hyundai');
   $('target-brand').innerHTML=[...brands].sort((a,b)=>a[1].localeCompare(b[1])).map(([key,name])=>`<option value="${esc(key)}">${esc(name)}</option>`).join('');$('target-brand').value='hyundai';updateTargetModels();
@@ -28,11 +29,11 @@ function render(){
   const included=filtered.filter(r=>selectedResponses.has(r.task_id));
   const aggregate=aggregateResponses(included,version(),$('target-brand').value,$('target-model').value);
   population=aggregate.rows.map(row=>row.response);renderOverview(aggregate,included.length);
-  groups=groupPrompts(aggregate.rows.filter(row=>!drill||row.signals[drill]===true).map(row=>row.response));
+  groups=groupPrompts(drill?aggregate.rows.filter(row=>row.signals[drill]===true).map(row=>row.response):included);
   if(!groups.some(g=>g.id===promptId)){promptId=groups[0]?.id||'';responseId='';analysisId='';}
   const visible=groups.flatMap(g=>g.responses),analysed=coverage(visible,version());
-  $('counts').innerHTML=`<span>프롬프트<strong>${new Set(population.map(r=>r.prompt_id)).size}</strong></span><span>모집단<strong>${population.length}</strong></span><span>스키마<strong>v3</strong></span>`;
-  $('scope-note').textContent=(version()==='latest'?'응답별 최신 v3 분석 · 서로 다른 Judge 버전과 실험 결과 포함':isReferenceVersion(version())?'AI 참조 초안 · 독립 검수 전 자료':`${deploymentLabel(data,version())||'운영 채택 표시 없음'} · 동일 Judge 버전 · 응답별 최신 v3 분석`)+` · 구 스키마만 있는 응답 ${data.excluded_legacy_responses||0}건 제외`;
+  $('counts').innerHTML=`<span>등록 프롬프트<strong>${data.counts.prompts}</strong></span><span>전체 응답<strong>${data.responses.length}</strong></span><span>집계 모집단<strong>${population.length}</strong></span>`;
+  $('scope-note').textContent=`고객사 DB · ${data.export_info.export_version} · 데이터 기준 ${date(data.export_info.snapshot_at)} KST · 응답이 있는 프롬프트 ${data.counts.prompts_with_responses}개`;
   $('drill-note').textContent=drill?`${metricNames[drill]} 해당 ${visible.length}건`:`전체 ${visible.length}건`;$('clear-drill').hidden=!drill;
   $('prompt-count').textContent=groups.length+'개 프롬프트';
   $('prompt-list').innerHTML=groups.map(g=>`<button class="prompt-item ${g.id===promptId?'active':''}" data-prompt="${esc(g.id)}" ${g.id===promptId?'aria-current="true"':''}><code>${esc(g.id)}</code><span>${esc(g.text)}</span><small>응답 ${g.responses.length} · ${isReferenceVersion(version())?'초안':'분석'} ${coverage(g.responses,version())}</small></button>`).join('')||'<div class="blank">검색 결과 없음</div>';
@@ -48,8 +49,8 @@ function renderSelection(){
   list.innerHTML=promptGroups.map(g=>{
     const state=selectionState(g.responses,selectedResponses);
     return `<div class="selection-group"><label class="prompt-check"><input type="checkbox" data-prompt-select="${esc(g.id)}" ${state.checked?'checked':''} aria-label="${esc(g.id)} 전체 응답 선택"></label><details data-prompt-group="${esc(g.id)}" ${opened.has(g.id)?'open':''}><summary><code>${esc(g.id)}</code><span>${esc(g.text)}</span><small>${state.count}/${g.responses.length}</small></summary><div class="response-choices">${g.responses.map(r=>{
-      const a=selectAnalysis(r,version()),status=!a?'분석 없음':a.analysis_status==='PARTIAL'?'부분 결과 · 집계 제외':'';
-      return `<label class="response-choice"><input type="checkbox" data-response-select="${esc(r.task_id)}" ${selectedResponses.has(r.task_id)?'checked':''}><span><strong>${esc(providerName[r.provider]||r.provider)}</strong> · ${esc(r.model_name)} <small>반복 ${esc(r.run_no)} · ${esc(date(r.collected_at))} · ${esc(r.task_id.slice(0,8))}${status?' · '+status:''}</small></span></label>`;
+      const a=selectAnalysis(r,version()),status=analysisStatusText(a);
+      return `<label class="response-choice"><input type="checkbox" data-response-select="${esc(r.task_id)}" ${selectedResponses.has(r.task_id)?'checked':''}><span><strong>${esc(providerName[r.provider]||r.provider)}</strong> · ${esc(r.model_name)} <small>${esc(date(r.collected_at))} · ${esc(r.task_id.slice(0,8))}${status?' · '+status:''}</small></span></label>`;
     }).join('')}</div></details></div>`;
   }).join('')||'<div class="blank">현재 필터에 해당하는 응답이 없습니다.</div>';
   for(const box of list.querySelectorAll('[data-prompt-select]'))box.indeterminate=selectionState(promptGroups.find(g=>g.id===box.dataset.promptSelect).responses,selectedResponses).indeterminate;
@@ -60,7 +61,7 @@ function updateTargetModels(){
   $('target-model').innerHTML='<option value="all">브랜드 전체</option>'+[...models].sort((a,b)=>a[1].localeCompare(b[1],'ko',{numeric:true})).map(([key,name])=>`<option value="${esc(key)}">${esc(name)}</option>`).join('');
 }
 function renderOverview(result,filteredCount){
-  $('population-note').textContent=`모집단 ${result.total}건 · 분석 없음·부분 결과 ${filteredCount-result.total}건 제외 · 막대를 누르면 해당 응답 보기`;
+  $('population-note').textContent=`모집단 ${result.total}건 · 미완료·부분 결과 ${filteredCount-result.total}건 집계 제외 (상세 조회 가능) · 막대를 누르면 해당 응답 보기`;
   $('funnel').innerHTML=result.metrics.map(m=>`<button class="funnel-row ${drill===m.key?'selected':''}" data-metric="${m.key}" aria-pressed="${drill===m.key}"><span>${metricNames[m.key]}</span><meter min="0" max="${result.total||1}" value="${m.count}" aria-label="${metricNames[m.key]} 비율">${percent(m.count,result.total)}</meter><strong>${percent(m.count,result.total)}</strong><small>${m.count} / ${result.total}${m.unknown?' · 미판정 '+m.unknown:''}</small></button>`).join('');
   $('mixed-note').textContent=`긍정 노출: 긍정 수 > 부정 수 · 긍정·부정 혼재 ${result.mixed}건 · 동일 모집단 기준`;
   $('provider-summary').innerHTML=[...new Set(population.map(r=>r.provider))].sort().map(p=>{
@@ -73,8 +74,8 @@ function renderPrompt(){
   if(!g.responses.some(r=>r.task_id===responseId)){responseId=g.responses[0].task_id;analysisId='';}
   currentResponse=g.responses.find(r=>r.task_id===responseId);
   $('prompt-id').textContent=g.id;$('prompt-text').textContent=currentResponse.prompt_text;
-  $('response-tabs').innerHTML=g.responses.map(r=>`<button data-response="${esc(r.task_id)}" class="${r.task_id===responseId?'active':''}" aria-pressed="${r.task_id===responseId}"><strong>${esc(providerName[r.provider]||r.provider)}</strong><small>${esc(r.model_name)}${g.responses.filter(x=>x.provider===r.provider).length>1?' · '+esc(r.run_id)+' / '+r.run_no:''}</small></button>`).join('');
-  $('response-meta').innerHTML=`수집 ${esc(date(currentResponse.collected_at))} KST · 반복 ${currentResponse.run_no}<details><summary>응답 식별 정보</summary>응답 ID: ${esc(responseId)}<br>수집 실행: ${esc(currentResponse.run_id)}</details>`;
+  $('response-tabs').innerHTML=g.responses.map(r=>`<button data-response="${esc(r.task_id)}" class="${r.task_id===responseId?'active':''}" aria-pressed="${r.task_id===responseId}"><strong>${esc(providerName[r.provider]||r.provider)}</strong><small>${esc(r.model_name)}${g.responses.filter(x=>x.provider===r.provider).length>1?' · '+esc(r.response_id.slice(0,8)):''}</small></button>`).join('');
+  $('response-meta').innerHTML=`수집 ${esc(date(currentResponse.collected_at))} KST · 웹 검색 ${currentResponse.web_search_enabled===true?'사용':currentResponse.web_search_enabled===false?'미사용':'미제공'}<details><summary>응답 식별 정보</summary>응답 ID: ${esc(responseId)}</details>`;
   history.replaceState(null,'','#'+new URLSearchParams({prompt:promptId,response:responseId}));
   evidence='';$('source-text').scrollTop=0;renderSource();
   $('reasoning-wrap').hidden=!currentResponse.reasoning_summary;$('reasoning-text').textContent=currentResponse.reasoning_summary||'';$('reasoning-wrap').open=false;
@@ -91,7 +92,7 @@ function renderSource(){
 function renderAnalysis(){
   const a=currentAnalysis;
   $('analysis-export').disabled=!a;$('no-analysis').hidden=!!a;$('analysis-content').hidden=!a;
-  $('analysis-meta').innerHTML=!a?'':a.is_reference?`<span class="tag draft">${esc(a.author_kind)} · ${esc(a.review_status)}</span> · ${esc(analysisLabel(a))} · revision ${a.revision}${a.unresolved_ambiguities?' · 미해결 '+a.unresolved_ambiguities+'건':''}<details><summary>초안 식별 정보</summary>${esc(a.record_id)}<br>기준: ${esc(a.rubric_name||a.rubric_id)}${a.expected_output?.catalog_id?'<br>마스터 카탈로그: '+esc(a.expected_output.catalog_id):''}</details>`:`${deploymentLabel(data,a.judge_version_id)?'<span class="tag production">'+deploymentLabel(data,a.judge_version_id)+'</span> ':''}${a.analysis_status==='PARTIAL'?'<span class="tag draft">부분 결과 · 집계 제외</span> ':''}${esc(a.judge_model_name||a.judge_model_id)} · <span class="tag">${esc(analysisLabel(a))}</span><details><summary>분석 식별 정보</summary>분석 ID: ${esc(a.analysis_id)}<br>실행: ${esc(a.analysis_run_id)}<br>Judge: ${esc(a.judge_version_id)}</details>`;
+  $('analysis-meta').innerHTML=!a?'':`<span class="tag ${a.analysis_status==='SUCCEEDED'?'':'draft'}">${esc(analysisStatusText(a))}</span> · ${esc(analysisLabel(a))}<details><summary>데이터 식별 정보</summary>공개 버전: ${esc(a.export_version)}<br>응답 ID: ${esc(a.response_id)}<br>분석 시각: ${esc(date(a.analyzed_at))}</details>`;
   currentEntities=entitiesOf(a);entityKey='';$('entity-search').value='';$('recommended').checked=false;$('top-only').checked=false;$('top-only-wrap').hidden=a?.schema_version!==3;$('category').value='all';$('sentiment').value='all';
   entityKey=currentEntities.find(e=>brandKey(e.brand)===$('target-brand').value&&($('target-model').value==='all'||targetKey(e.model)===$('target-model').value)&&(!drill||drill==='exposure'||(drill==='positive'?e.kbf_assessments.some(k=>k.sentiment==='POSITIVE'):e[drill==='top'?'is_top_recommended':'is_recommended']===true)))?.key||'';
   if(a)renderEntities();
@@ -103,7 +104,7 @@ function renderEntities(){
   const legacy=![2,3].includes(currentAnalysis?.schema_version),top=currentAnalysis?.schema_version===3;
   $('priority-heading').textContent='최우선 여부';
   $('entity-summary').textContent=`${legacy?'언급':'개체'} ${entities.length}개 / 전체 ${currentEntities.length}개${top?' · 최우선은 최종 선택 여부':' · 이전 분석에는 최우선 여부가 없습니다'}`;
-  $('entities').innerHTML=entities.map(e=>`<tr class="${e.key===entityKey?'active':''}"><td><button class="entity-name" data-entity="${esc(e.key)}" aria-pressed="${e.key===entityKey}"><span>${esc(e.brand||'브랜드 미지정')}</span><strong>${esc(entityName(e))}</strong></button></td><td>${e.is_recommended===null?'미판정':e.is_recommended?'추천':'—'}</td><td>${esc(priorityText(e,currentAnalysis))}</td><td>${e.kbf_assessments.length}</td></tr>`).join('')||`<tr><td colspan="4" class="blank">${currentEntities.length?'검색 결과 없음':'분석 성공 · 추출된 항목 없음'}</td></tr>`;
+  $('entities').innerHTML=entities.map(e=>`<tr class="${e.key===entityKey?'active':''}"><td><button class="entity-name" data-entity="${esc(e.key)}" aria-pressed="${e.key===entityKey}"><span>${esc(e.brand||'브랜드 미지정')}</span><strong>${esc(entityName(e))}</strong></button></td><td>${e.is_recommended===null?'미판정':e.is_recommended?'추천':'—'}</td><td>${esc(priorityText(e,currentAnalysis))}</td><td>${e.kbf_assessments.length}</td></tr>`).join('')||`<tr><td colspan="4" class="blank">${currentEntities.length?'검색 결과 없음':analysisStatusText(currentAnalysis)+' · 저장된 항목 없음'}</td></tr>`;
   $('entity-detail').hidden=!entities.length;
   if(entities.length)renderEntity();
 }
@@ -120,7 +121,7 @@ function renderEntity(){
 }
 function renderAssessments(){
   const e=currentEntities.find(e=>e.key===entityKey);if(!e)return;
-  $('assessments').innerHTML=e.kbf_assessments.map((k,i)=>({...k,index:i})).filter(k=>($('category').value==='all'||(k.category_id||'unclassified')===$('category').value)&&($('sentiment').value==='all'||k.sentiment===$('sentiment').value)).map(k=>`<article class="assessment"><div class="assessment-head"><span class="sentiment ${k.sentiment==='POSITIVE'?'positive':k.sentiment==='NEGATIVE'?'negative':''}">${esc(sentiments[k.sentiment]||k.sentiment)}</span><strong>${esc(categoryName(k.category_id))}</strong></div><p>${esc(k.content)}</p><details><summary>근거</summary><blockquote>${esc(k.evidence)}</blockquote><button class="small" data-evidence="${k.index}">원문에서 보기</button></details></article>`).join('')||'<div class="blank">해당 KBF 평가가 없습니다.</div>';
+  $('assessments').innerHTML=e.kbf_assessments.map((k,i)=>({...k,index:i})).filter(k=>($('category').value==='all'||(k.category_id||'unclassified')===$('category').value)&&($('sentiment').value==='all'||k.sentiment===$('sentiment').value)).map(k=>`<article class="assessment"><div class="assessment-head"><span class="sentiment ${k.sentiment==='POSITIVE'?'positive':k.sentiment==='NEGATIVE'?'negative':''}">${esc(sentiments[k.sentiment]||k.sentiment)}</span><strong>${esc(categoryName(k.category_id))}</strong></div><blockquote>${esc(k.evidence)}</blockquote><button class="small" data-evidence="${k.index}">원문에서 보기</button></article>`).join('')||'<div class="blank">해당 KBF 평가가 없습니다.</div>';
 }
 $('prompt-list').onclick=e=>{const b=e.target.closest('[data-prompt]');if(b){promptId=b.dataset.prompt;responseId='';analysisId='';render();}};
 $('response-tabs').onclick=e=>{const b=e.target.closest('[data-response]');if(b){responseId=b.dataset.response;analysisId='';renderPrompt();}};
@@ -145,7 +146,7 @@ $('assessments').onclick=e=>{const b=e.target.closest('[data-evidence]');if(b)sh
 $('recommendation').onclick=e=>{const b=e.target.closest('[data-recommendation]');if(b)showEvidence(recommendationEvidence(currentEntities.find(x=>x.key===entityKey))[Number(b.dataset.recommendation)]?.evidence||'');};
 $('clear-evidence').onclick=()=>{evidence='';renderSource();};
 function download(value,name,type){const url=URL.createObjectURL(new Blob([value],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);}
-$('export').onclick=()=>{const rows=groups.flatMap(g=>g.responses);download(csv([['prompt_id','prompt_text','response_id','provider','model_name','collected_at','response_text'],...rows.map(r=>[r.prompt_id,r.prompt_text,r.task_id,r.provider,r.model_name,r.collected_at,r.response_text])]),'geo-responses.csv','text/csv;charset=utf-8');toast(rows.length+'개 응답을 내려받았습니다.');};
+$('export').onclick=()=>{const rows=groups.flatMap(g=>g.responses);download(csv([['prompt_id','prompt_text','response_id','provider','model_name','collected_at','analysis_status','response_text'],...rows.map(r=>[r.prompt_id,r.prompt_text,r.task_id,r.provider,r.model_name,r.collected_at,selectAnalysis(r,version())?.analysis_status,r.response_text])]),'geo-responses.csv','text/csv;charset=utf-8');toast(rows.length+'개 응답을 내려받았습니다.');};
 $('analysis-export').onclick=()=>download(JSON.stringify({prompt_id:promptId,response_id:responseId,analysis:currentAnalysis},null,2),'geo-analysis-'+promptId+'.json','application/json');
 $('import').onclick=$('open-data').onclick=()=>$('data-file').click();
 $('data-file').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>100*1024**2)throw Error('100MB 이하의 데이터 파일을 선택하세요.');setData(JSON.parse(await file.text()));toast('데이터를 불러왔습니다.');}catch(error){toast(error.message);}finally{e.target.value='';}};

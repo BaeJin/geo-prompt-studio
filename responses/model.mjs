@@ -12,8 +12,8 @@ export function validateData(data) {
   return data;
 }
 export function availableAnalyses(response,version='latest'){
-  if(isReferenceVersion(version))return response.references.filter(r=>version==='reference'||r.rubric_id===version.slice(10)).map(referenceAnalysis).sort((a,b)=>b.analyzed_at.localeCompare(a.analyzed_at)||b.revision-a.revision||b.analysis_id.localeCompare(a.analysis_id));
-  return response.analyses.filter(a=>version==='latest'||a.judge_version_id===version).slice().sort((a,b)=>b.analyzed_at.localeCompare(a.analyzed_at)||b.analysis_id.localeCompare(a.analysis_id));
+  if(isReferenceVersion(version))return response.references.filter(r=>version==='reference'||r.rubric_id===version.slice(10)).map(referenceAnalysis).sort((a,b)=>(b.analyzed_at||'').localeCompare(a.analyzed_at||'')||b.revision-a.revision||b.analysis_id.localeCompare(a.analysis_id));
+  return response.analyses.filter(a=>version==='latest'||a.judge_version_id===version).slice().sort((a,b)=>(b.analyzed_at||'').localeCompare(a.analyzed_at||'')||b.analysis_id.localeCompare(a.analysis_id));
 }
 export function selectAnalysis(response,version='latest',id=''){
   const candidates=availableAnalyses(response,version);
@@ -24,7 +24,7 @@ function referenceAnalysis(ref){
   const output=ref.expected_output||{},entities=output.entities||[];
   return {...ref,analysis_id:ref.record_id,judge_name:ref.rubric_name||'AI 참조 초안',category_set_id:ref.category_set_id||'kbf_groups_v1',schema_version:ref.schema_version||(entities.some(e=>'is_top_recommended' in e)?3:2),entity_unit:ref.entity_unit||(output.aggregation?'master':'extracted'),entities,analyzed_at:ref.created_at||'',is_reference:true};
 }
-export function analysisLabel(a){return !a?'':a.entity_unit==='master'?'마스터 단위 · 파생 초안':a.schema_version===3?'개체 분석 v3 · 최우선 추천':a.schema_version===2?'이전 개체 분석 · 최우선 미제공':'이전 언급 분석 · 최우선 미제공';}
+export function analysisLabel(a){return !a?'':a.is_customer_export?'고객사 DB 공식 결과':a.entity_unit==='master'?'마스터 단위 · 파생 초안':a.schema_version===3?'개체 분석 v3 · 최우선 추천':a.schema_version===2?'이전 개체 분석 · 최우선 미제공':'이전 언급 분석 · 최우선 미제공';}
 export function recommendationEvidence(entity){
   const value=entity.recommendation_evidence;
   return typeof value==='string'?(value?[{evidence:value}]:[]):Array.isArray(value)?value.filter(v=>typeof v.evidence==='string'&&v.evidence):[];
@@ -75,6 +75,7 @@ export function highlighted(text,evidence){
 
 // Aggregate one selected analysis per response, never analysis history rows.
 export function latestSchemaData(input){
+  if(input.source_kind==='customer_export')return input;
   const responses=input.responses.map(r=>({...r,analyses:r.analyses.filter(a=>a.schema_version===3),references:r.references.filter(a=>a.schema_version===3)})).filter(r=>r.analyses.length);
   const versions=new Map();
   for(const r of responses)for(const a of r.analyses){
@@ -88,7 +89,7 @@ export function targetKey(value){return String(value||'').normalize('NFKC').trim
 export function brandKey(value){const key=targetKey(value);return ['현대','현대자동차','hyundaimotor','hyundaimotors'].includes(key)?'hyundai':key;}
 export function responseSignals(response,version,brand='hyundai',model='all'){
   const a=selectAnalysis(response,version);
-  if(!a||a.schema_version!==3||a.analysis_status==='PARTIAL')return null;
+  if(!a||a.schema_version!==3||(a.analysis_status&&a.analysis_status!=='SUCCEEDED'))return null;
   const entities=a.entities.filter(e=>brandKey(e.brand)===brand&&(model==='all'||targetKey(e.model)===model));
   const assessments=entities.flatMap(e=>e.kbf_assessments||[]);
   const positiveCount=assessments.filter(k=>k.sentiment==='POSITIVE').length,negativeCount=assessments.filter(k=>k.sentiment==='NEGATIVE').length;
@@ -113,3 +114,5 @@ export function selectionState(responses,selected){
 export function updateSelection(selected,responses,include){
   const next=new Set(selected);for(const r of responses)if(include)next.add(r.task_id);else next.delete(r.task_id);return next;
 }
+
+export function analysisStatusText(a){return !a?'분석 없음':({SUCCEEDED:'분석 완료',PARTIAL:'부분 결과 · 집계 제외',NOT_ANALYZED:'미분석 · 집계 제외',NOT_INCLUDED:'분석 대상 제외',PROCESSING:'분석 중 · 집계 제외',FAILED:'분석 실패 · 집계 제외',UNKNOWN:'상태 미확인 · 집계 제외'}[a.analysis_status]||'상태 미제공');}

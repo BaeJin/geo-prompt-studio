@@ -119,17 +119,19 @@ export function promptFilterOptions(responses,template='all'){
   const facets=responses.map(r=>promptFacets(r.prompt_text));
   const templates=[...new Set(facets.map(f=>f.template))].sort((a,b)=>a.localeCompare(b,'ko'));
   const params=new Map();
-  for(const f of facets)if(template==='all'||f.template===template)for(const p of f.params)params.set(p.key,p);
+  for(const f of facets)if(matchesFilter(template,f.template))for(const p of f.params)params.set(p.key,p);
   return {templates,params:[...params.values()].sort((a,b)=>a.name.localeCompare(b.name)||a.value.localeCompare(b.value,undefined,{numeric:true}))};
 }
 export function responseScope(responses,selectedIds,query='',provider='all',model='all',template='all',param='all'){
-  const candidates=groupPrompts(responses,query,provider).flatMap(g=>g.responses).filter(r=>{
-    if(model!=='all'&&r.model_name!==model)return false;
+  const candidates=groupPrompts(responses,query).flatMap(g=>g.responses).filter(r=>{
+    if(!matchesFilter(provider,r.provider)||!matchesFilter(model,r.model_name))return false;
     const facets=promptFacets(r.prompt_text);
-    return (template==='all'||facets.template===template)&&(param==='all'||facets.params.some(p=>p.key===param));
+    return matchesFilter(template,facets.template)&&(isAllFilter(param)||facets.params.some(p=>matchesFilter(param,p.key)));
   });
   return {candidates,selected:candidates.filter(r=>selectedIds.has(r.task_id))};
 }
+function isAllFilter(value){return value==='all'||(Array.isArray(value)&&!value.length);}
+function matchesFilter(filter,value){return isAllFilter(filter)||(Array.isArray(filter)?filter.includes(value):filter===value);}
 export function coverage(responses,version){return responses.filter(r=>selectAnalysis(r,version)).length;}
 export function csv(rows){
   const cell=v=>'"'+(/^[=+@\-\t\r\n]/.test(String(v??''))?"'":'')+String(v??'').replaceAll('"','""')+'"';

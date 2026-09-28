@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Response Explorer · DATACAST</title><link rel="stylesheet" href="styles.css?v=a41c67358d8c"><script type="module" src="app.mjs?v=42802020a22a"></script></head>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Response Explorer · DATACAST</title><link rel="stylesheet" href="styles.css?v=e0278670e02e"><script type="module" src="app.mjs?v=75d49ed26425"></script></head>
 <body>
 <a class="skip-link" href="#main-content">본문으로 이동</a><header class="suite-header"><nav class="service-nav" aria-label="서비스"><a href="https://baejin.github.io/geo-prompt-studio/">Prompt Studio</a><a href="https://baejin.github.io/geo-prompt-studio/responses/" aria-current="page">Response Explorer</a></nav></header>
 <div class="service-toolbar"><nav class="explorer-nav" aria-label="Response Explorer 메뉴"><a href="#view=responses" data-view="responses" aria-current="page">프롬프트·응답</a><a href="#view=analysis" data-view="analysis">분석 결과</a></nav></div>
@@ -12,8 +12,8 @@
     <section class="scope-panel" aria-label="조회 범위">
       <div class="scope-heading"><h2>조회 범위</h2><div class="counts" id="counts"></div></div>
       <div class="filter-groups">
-        <fieldset class="filter-group prompt-filters"><legend>프롬프트 필터</legend><div class="filter-fields"><label class="query-field">키워드<input id="prompt-search" type="search" placeholder="제목, ID, 원문 검색" aria-label="프롬프트 검색"></label><label>템플릿 이름<select id="prompt-template"><option value="all">전체</option></select></label><label>파라미터 값<select id="prompt-param"><option value="all">전체</option></select></label></div></fieldset>
-        <fieldset class="filter-group response-filters"><legend>응답 필터</legend><div class="filter-fields"><label>서비스<select id="provider"><option value="all">전체</option></select></label><label>모델<select id="collection-model"><option value="all">전체</option></select></label></div></fieldset>
+        <fieldset class="filter-group prompt-filters"><legend>프롬프트 필터</legend><div class="filter-fields"><label class="query-field">키워드<input id="prompt-search" type="search" placeholder="제목, ID, 원문 검색" aria-label="프롬프트 검색"></label><div class="multi-field"><span id="prompt-template-label">템플릿 이름</span><details id="prompt-template" class="multi-filter" data-filter="prompt-template"><summary aria-labelledby="prompt-template-label prompt-template-filter-summary"><span id="prompt-template-filter-summary">전체</span></summary><div class="multi-options" role="group" aria-labelledby="prompt-template-label"></div></details></div><div class="multi-field"><span id="prompt-param-label">파라미터 값</span><details id="prompt-param" class="multi-filter" data-filter="prompt-param"><summary aria-labelledby="prompt-param-label prompt-param-filter-summary"><span id="prompt-param-filter-summary">전체</span></summary><div class="multi-options" role="group" aria-labelledby="prompt-param-label"></div></details></div></div></fieldset>
+        <fieldset class="filter-group response-filters"><legend>응답 필터</legend><div class="filter-fields"><div class="multi-field"><span id="provider-label">서비스</span><details id="provider" class="multi-filter" data-filter="provider"><summary aria-labelledby="provider-label provider-filter-summary"><span id="provider-filter-summary">전체</span></summary><div class="multi-options" role="group" aria-labelledby="provider-label"></div></details></div><div class="multi-field"><span id="collection-model-label">모델</span><details id="collection-model" class="multi-filter" data-filter="collection-model"><summary aria-labelledby="collection-model-label collection-model-filter-summary"><span id="collection-model-filter-summary">전체</span></summary><div class="multi-options" role="group" aria-labelledby="collection-model-label"></div></details></div></div></fieldset>
       </div>
       <label class="version-filter" hidden>분석 기준<select id="version"><option value="latest">고객사 DB 공식 결과</option></select></label>
     </section>
@@ -29,7 +29,7 @@
       <div class="overview-heading"><h2 id="overview-title" tabindex="-1">집계 결과</h2><div class="target-controls"><label>브랜드<select id="target-brand"></select></label><label>모델<select id="target-model"><option value="all">브랜드 전체</option></select></label></div></div>
       <p id="population-note" class="population-note muted" role="status"></p>
 
-      <div class="overview-grid"><div><div id="funnel" class="funnel" aria-label="전체 응답 대비 비율"></div></div><div class="provider-summary"><h3>AI 서비스별 비교</h3><div class="table-scroll"><table class="summary-table"><thead><tr><th>서비스</th><th>응답</th><th>노출</th><th>긍정</th><th>추천</th><th>최우선</th></tr></thead><tbody id="provider-summary"></tbody></table></div></div></div>
+      <div class="overview-grid"><div><div id="funnel" class="funnel" aria-label="전체 응답 대비 비율"></div></div><div class="provider-filter-summary"><h3>AI 서비스별 비교</h3><div class="table-scroll"><table class="summary-table"><thead><tr><th>서비스</th><th>응답</th><th>노출</th><th>긍정</th><th>추천</th><th>최우선</th></tr></thead><tbody id="provider-summary"></tbody></table></div></div></div>
 
     </section>
     <section id="details-view" aria-labelledby="detail-title">

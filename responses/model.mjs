@@ -29,6 +29,12 @@ export function recommendationEvidence(entity){
   const value=entity.recommendation_evidence;
   return typeof value==='string'?(value?[{evidence:value}]:[]):Array.isArray(value)?value.filter(v=>typeof v.evidence==='string'&&v.evidence):[];
 }
+export function sentimentScore(entity){
+  const assessments=entity?.kbf_assessments||[];
+  const positive=assessments.filter(k=>k.sentiment==='POSITIVE').length;
+  const negative=assessments.filter(k=>k.sentiment==='NEGATIVE').length;
+  return {positive,negative,percent:positive+negative?100*positive/(positive+negative):null};
+}
 export function priorityText(entity,analysis){return analysis?.schema_version===3&&typeof entity.is_top_recommended==='boolean'?(entity.is_top_recommended?'예':'아니오'):'미제공';}
 export function sortEntities(entities,order='default',analysis){
   const rows=entities.slice();

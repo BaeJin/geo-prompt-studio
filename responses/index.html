@@ -1,7 +1,8 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Response Explorer · DATACAST</title><link rel="stylesheet" href="styles.css?v=37d81ca311bf"><script type="module" src="app.mjs?v=accd8c883ba2"></script></head>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Response Explorer · DATACAST</title><link rel="stylesheet" href="styles.css?v=2233d5e63443"><script type="module" src="app.mjs?v=ff9994b7ea30"></script></head>
 <body>
-<a class="skip-link" href="#main-content">본문으로 이동</a><header class="suite-header"><nav class="service-nav" aria-label="서비스"><a href="https://baejin.github.io/geo-prompt-studio/">프롬프트</a><a href="#view=responses" data-view="responses">응답 결과</a><a href="#view=analysis" data-view="analysis" aria-current="page">분석 결과</a></nav><span class="suite-brand">DATACAST</span></header>
+<a class="skip-link" href="#main-content">본문으로 이동</a><header class="suite-header"><nav class="service-nav" aria-label="서비스"><a href="https://baejin.github.io/geo-prompt-studio/">Prompt Studio</a><a href="https://baejin.github.io/geo-prompt-studio/responses/" aria-current="page">Response Explorer</a></nav></header>
+<div class="service-toolbar"><nav class="explorer-nav" aria-label="Response Explorer 메뉴"><a href="#view=prompts" data-view="prompts">프롬프트</a><a href="#view=responses" data-view="responses">응답 결과</a><a href="#view=analysis" data-view="analysis" aria-current="page">분석 결과</a></nav></div>
 
 <main id="main-content" tabindex="-1">
   <section id="loading" role="status">데이터를 불러오는 중입니다.</section>
@@ -13,6 +14,10 @@
       <div class="filters"><label class="query-field">프롬프트<input id="prompt-search" type="search" placeholder="ID 또는 질문 검색" aria-label="프롬프트 검색"></label><label>수집 모델<select id="provider"><option value="all">전체</option></select></label><label>분석 기준<select id="version"><option value="latest">고객사 DB 공식 결과</option></select></label></div>
       <details id="cohort-picker" class="cohort-picker"><summary>집계 대상 선택 <span id="selection-count" class="muted"></span></summary><div class="selection-toolbar"><button id="select-visible" class="small">현재 목록 선택</button><button id="deselect-visible" class="small">현재 목록 해제</button><button id="reset-selection" class="small">전체 초기화</button></div><div id="selection-list" class="selection-list"></div></details>
 
+    </section>
+    <section id="prompts-view" class="applied-prompts" aria-labelledby="applied-prompts-title" hidden>
+      <div class="applied-heading"><h2 id="applied-prompts-title">프롬프트</h2><span id="applied-prompt-count" class="muted"></span></div>
+      <div class="table-scroll"><table class="applied-table"><thead><tr><th scope="col">ID</th><th scope="col">프롬프트</th><th scope="col">수집 모델</th><th scope="col">응답</th><th scope="col"><span class="visually-hidden">상세 조회</span></th></tr></thead><tbody id="applied-prompt-list"></tbody></table></div>
     </section>
     <section id="overview-view" class="overview" aria-labelledby="overview-title">
       <div class="overview-heading"><h2 id="overview-title" tabindex="-1">집계 결과</h2><div class="target-controls"><label>브랜드<select id="target-brand"></select></label><label>모델<select id="target-model"><option value="all">브랜드 전체</option></select></label></div></div>
@@ -43,5 +48,6 @@
     </div>
     </section>
   </section>
-</main><div id="toast" class="toast" role="status" hidden></div>
+</main>
+<footer class="site-footer"><div class="footer-inner"><img src="datacast-logo.png" width="186" height="48" alt="DATACAST"><div class="footer-info"><span>개발 · DATACAST</span><small>© 2026 DATACAST. All rights reserved.</small></div></div></footer><div id="toast" class="toast" role="status" hidden></div>
 </body></html>

@@ -100,8 +100,34 @@ export function promptPresentation(text){
   return {title:first.length>72?first.slice(0,69)+'…':first,kind:'질문',market:''};
 }
 
-export function responseScope(responses,selectedIds,query='',provider='all',model='all'){
-  const candidates=groupPrompts(responses,query,provider).flatMap(g=>g.responses).filter(r=>model==='all'||r.model_name===model);
+// These are display facets recovered only from exact, known question formats.
+// They do not establish a stored template ID or historical Studio provenance.
+export function promptFacets(text){
+  const formats=[
+    ['차량 추천',/^What is the best (.+) to buy in (.+) right now\?$/,['Category','Country']],
+    ['차량 비교',/^How does Hyundai (.+) compare to (.+) in (.+)\?$/,['Hyundai','Other','Country']],
+    ['대안 추천',/^In (.+), I'm looking at (.+) but want to explore other options — what would you recommend for now\?$/,['Country','Model']],
+    ['장단점 탐색',/^What are the pros and cons of Hyundai (.+) to buy in (.+) for now\?$/,['Model','Country']],
+  ];
+  for(const [name,pattern,keys] of formats){
+    const match=String(text||'').match(pattern);
+    if(match)return {template:name,params:keys.map((key,i)=>({name:key,value:match[i+1],key:JSON.stringify([key,match[i+1]])}))};
+  }
+  return {template:'미지정',params:[]};
+}
+export function promptFilterOptions(responses,template='all'){
+  const facets=responses.map(r=>promptFacets(r.prompt_text));
+  const templates=[...new Set(facets.map(f=>f.template))].sort((a,b)=>a.localeCompare(b,'ko'));
+  const params=new Map();
+  for(const f of facets)if(template==='all'||f.template===template)for(const p of f.params)params.set(p.key,p);
+  return {templates,params:[...params.values()].sort((a,b)=>a.name.localeCompare(b.name)||a.value.localeCompare(b.value,undefined,{numeric:true}))};
+}
+export function responseScope(responses,selectedIds,query='',provider='all',model='all',template='all',param='all'){
+  const candidates=groupPrompts(responses,query,provider).flatMap(g=>g.responses).filter(r=>{
+    if(model!=='all'&&r.model_name!==model)return false;
+    const facets=promptFacets(r.prompt_text);
+    return (template==='all'||facets.template===template)&&(param==='all'||facets.params.some(p=>p.key===param));
+  });
   return {candidates,selected:candidates.filter(r=>selectedIds.has(r.task_id))};
 }
 export function coverage(responses,version){return responses.filter(r=>selectAnalysis(r,version)).length;}

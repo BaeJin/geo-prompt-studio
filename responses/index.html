@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Response Explorer · DATACAST</title><link rel="stylesheet" href="styles.css?v=54b8c444da41"><script type="module" src="app.mjs?v=cdc815f25e20"></script></head>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Response Explorer · DATACAST</title><link rel="stylesheet" href="styles.css?v=a41c67358d8c"><script type="module" src="app.mjs?v=42802020a22a"></script></head>
 <body>
 <a class="skip-link" href="#main-content">본문으로 이동</a><header class="suite-header"><nav class="service-nav" aria-label="서비스"><a href="https://baejin.github.io/geo-prompt-studio/">Prompt Studio</a><a href="https://baejin.github.io/geo-prompt-studio/responses/" aria-current="page">Response Explorer</a></nav></header>
 <div class="service-toolbar"><nav class="explorer-nav" aria-label="Response Explorer 메뉴"><a href="#view=responses" data-view="responses" aria-current="page">프롬프트·응답</a><a href="#view=analysis" data-view="analysis">분석 결과</a></nav></div>
@@ -11,11 +11,15 @@
     <div class="page-heading"><h1 id="page-title">프롬프트·응답</h1><div class="page-tools"><span id="snapshot" class="muted"></span><div class="service-actions"><button id="import">데이터 열기</button><input id="data-file" type="file" accept=".json,application/json" hidden><button id="export" disabled>응답 CSV</button></div></div></div>
     <section class="scope-panel" aria-label="조회 범위">
       <div class="scope-heading"><h2>조회 범위</h2><div class="counts" id="counts"></div></div>
-      <div class="filters"><label class="query-field">프롬프트<input id="prompt-search" type="search" placeholder="제목, ID, 원문 검색" aria-label="프롬프트 검색"></label><label>AI 서비스<select id="provider"><option value="all">전체</option></select></label><label>수집 모델<select id="collection-model"><option value="all">전체</option></select></label><label>분석 기준<select id="version"><option value="latest">고객사 DB 공식 결과</option></select></label></div>
+      <div class="filter-groups">
+        <fieldset class="filter-group prompt-filters"><legend>프롬프트 필터</legend><div class="filter-fields"><label class="query-field">키워드<input id="prompt-search" type="search" placeholder="제목, ID, 원문 검색" aria-label="프롬프트 검색"></label><label>템플릿 이름<select id="prompt-template"><option value="all">전체</option></select></label><label>파라미터 값<select id="prompt-param"><option value="all">전체</option></select></label></div></fieldset>
+        <fieldset class="filter-group response-filters"><legend>응답 필터</legend><div class="filter-fields"><label>서비스<select id="provider"><option value="all">전체</option></select></label><label>모델<select id="collection-model"><option value="all">전체</option></select></label></div></fieldset>
+      </div>
+      <label class="version-filter" hidden>분석 기준<select id="version"><option value="latest">고객사 DB 공식 결과</option></select></label>
     </section>
     <section id="browse-view" class="response-browser" aria-label="프롬프트·응답 목록">
       <div class="browse-toolbar"><div><h2>프롬프트·응답 <span id="browse-count" class="muted"></span></h2></div><label class="check"><input id="selected-only" type="checkbox">선택한 응답만</label></div>
-      <div class="selection-toolbar"><button id="select-visible" class="small">검색 결과 선택</button><button id="deselect-visible" class="small">검색 결과 해제</button><button id="expand-groups" class="small">모두 펼치기</button><span id="selected-summary" class="muted" role="status"></span><button id="show-analysis" class="primary" disabled>분석 결과 보기</button></div>
+      <div class="selection-toolbar"><button id="select-visible" class="small">전체 선택</button><button id="deselect-visible" class="small">전체 해제</button><button id="expand-groups" class="small">모두 펼치기</button><span id="selected-summary" class="muted" role="status"></span><button id="show-analysis" class="primary" disabled>분석 결과 보기</button></div>
       <div id="selection-list" class="browse-list"></div>
       <div class="browse-pagination"><span id="browse-page" class="muted"></span><div><button id="browse-previous" class="small">이전</button><button id="browse-next" class="small">다음</button></div></div>
     </section>

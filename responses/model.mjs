@@ -62,11 +62,47 @@ export function groupPrompts(responses,query='',provider='all'){
   const q=query.trim().toLocaleLowerCase(),groups=new Map();
   for(const r of responses){
     if(provider!=='all'&&r.provider!==provider)continue;
-    if(q&&!`${r.prompt_id} ${r.prompt_text} ${r.prompt_note||''}`.toLocaleLowerCase().includes(q))continue;
+    if(q&&!`${r.prompt_id} ${r.prompt_text} ${r.prompt_note||''} ${promptPresentation(r.prompt_text).title}`.toLocaleLowerCase().includes(q))continue;
     if(!groups.has(r.prompt_id))groups.set(r.prompt_id,{id:r.prompt_id,text:r.prompt_text,responses:[]});
     groups.get(r.prompt_id).responses.push(r);
   }
   return [...groups.values()].sort((a,b)=>a.id.localeCompare(b.id));
+}
+
+// Display labels describe the question, never invent conclusions about its answer.
+// Exact-text mappings avoid reusing a title if the text behind an ID changes.
+export function promptPresentation(text){
+  const source=String(text||'').trim(),normalized=source.toLocaleLowerCase().replace(/\s+/g,' ');
+  const known=[
+    ['What are the best SUV brands to consider in Australia in 2026?','SUV 브랜드 추천 · 2026','추천'],
+    ['Should I buy a hybrid or a fully electric car in Australia?','하이브리드 vs 전기차','비교'],
+    ['Are Chinese electric car brands reliable enough to buy in Australia?','중국 전기차 브랜드 신뢰성','신뢰성'],
+    ['Hyundai vs Toyota — which brand has better long-term reliability in Australia?','Hyundai vs Toyota · 장기 신뢰성','비교'],
+    ['Hyundai vs BYD warranty and service network comparison in Australia','Hyundai vs BYD · 보증·서비스','비교'],
+    ['Hyundai Tucson vs Mazda CX-5 — which mid-size SUV is better in Australia?','Tucson vs CX-5 · 중형 SUV','비교'],
+    ['Hyundai vs Mazda — which brand has better resale value in Australia?','Hyundai vs Mazda · 중고차 가치','비교'],
+    ['Hyundai Ioniq 5 vs Tesla Model Y vs BYD Atto 3 — best EV SUV in Australia?','IONIQ 5 vs Model Y vs Atto 3','비교'],
+    ["I'm worried about BYD's battery safety — should I pay more for a Hyundai?",'BYD 배터리 안전성 · Hyundai 대안','안전성'],
+    ['What do Hyundai Ioniq 5 owners actually think after 12 months in Australia?','IONIQ 5 · 1년 실사용 평가','사용 경험'],
+    ['Is Hyundai considered a premium brand in Australia, or still seen as budget?','Hyundai 브랜드 인식','브랜드 인식'],
+  ];
+  const exact=known.find(([question])=>question.toLocaleLowerCase()===normalized);
+  if(exact)return {title:exact[1],kind:exact[2],market:/Australia/i.test(source)?'호주':''};
+  let match;
+  if((match=source.match(/^What is the best (.+) to buy in (.+) right now\?$/i))){
+    const category={car:'차량',suv:'SUV',ev:'전기차','family car':'패밀리카'}[match[1].toLowerCase()]||match[1];
+    return {title:category+' 추천',kind:'추천',market:match[2]==='Australia'?'호주':match[2]};
+  }
+  if((match=source.match(/^How does (.+) compare to (.+) in (.+)\?$/i)))return {title:match[1]+' vs '+match[2],kind:'비교',market:match[3]==='Australia'?'호주':match[3]};
+  if((match=source.match(/^In (.+), I'm looking at (.+) but want to explore other options — what would you recommend for now\?$/i)))return {title:match[2]+' 대안',kind:'대안',market:match[1]==='Australia'?'호주':match[1]};
+  if((match=source.match(/^What are the pros and cons of (.+) to buy in (.+) for now\?$/i)))return {title:match[1]+' 장단점',kind:'장단점',market:match[2]==='Australia'?'호주':match[2]};
+  const first=source.split(/\r?\n/).find(v=>v.trim())||'제목 없는 질문';
+  return {title:first.length>72?first.slice(0,69)+'…':first,kind:'질문',market:''};
+}
+
+export function responseScope(responses,selectedIds,query='',provider='all',model='all'){
+  const candidates=groupPrompts(responses,query,provider).flatMap(g=>g.responses).filter(r=>model==='all'||r.model_name===model);
+  return {candidates,selected:candidates.filter(r=>selectedIds.has(r.task_id))};
 }
 export function coverage(responses,version){return responses.filter(r=>selectAnalysis(r,version)).length;}
 export function csv(rows){

@@ -1,7 +1,8 @@
-import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText,sortEntities,latestSchemaData,brandKey,targetKey,aggregateResponses,deploymentLabel,selectionState,updateSelection,analysisStatusText,sentimentScore} from './model.mjs?v=5671ab6f6463';
+import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText,sortEntities,latestSchemaData,brandKey,targetKey,aggregateResponses,deploymentLabel,selectionState,updateSelection,analysisStatusText,sentimentScore,promptPresentation,responseScope} from './model.mjs?v=89367c67f7a4';
 const $=id=>document.getElementById(id), providerName={OPENAI:'OpenAI',GOOGLE:'Google',ANTHROPIC:'Anthropic'},sentiments={POSITIVE:'긍정',NEUTRAL:'중립',NEGATIVE:'부정'};
 let data,groups=[],promptId='',responseId='',analysisId='',entityKey='',currentResponse,currentAnalysis,currentEntities=[],evidence='',timer;
-let activeView='analysis';
+let activeView='responses',browsePage=0,expandedPrompts=new Set(),sourceResponse=null;
+const SELECTION_STORAGE='datacast-response-explorer-selection-v1';
 let drill='',population=[],selectedResponses=new Set(),selectionCandidates=[];
 const metricNames={exposure:'노출',positive:'긍정 노출',recommended:'추천',top:'최우선 추천'};
 const percent=(count,total)=>total?(count/total*100).toFixed(1)+'%':'—';
@@ -11,9 +12,12 @@ function categoryName(id){if(!id)return '미분류';const c=data.categories.find
 function version(){return $('version').value;}
 function setData(value){
   if(value.source_kind!=='customer_export'||value.source!=='hyundai-global-search.global_geo')throw Error('고객사 DB에서 갱신한 데이터 파일을 사용하세요.');
-  data=validateData(latestSchemaData(value));drill='';selectedResponses=new Set(data.responses.map(r=>r.task_id));$('loading').hidden=true;$('empty').hidden=true;$('dashboard').hidden=false;$('export').disabled=false;
+  data=validateData(latestSchemaData(value));drill='';selectedResponses=new Set();browsePage=0;expandedPrompts=new Set();
+  try{const saved=JSON.parse(localStorage.getItem(SELECTION_STORAGE)||'null');if(saved?.source===data.source&&saved?.version===data.export_info?.export_version&&Array.isArray(saved.ids))selectedResponses=new Set(saved.ids.filter(id=>data.responses.some(r=>r.task_id===id)));}catch{}
+  $('loading').hidden=true;$('empty').hidden=true;$('dashboard').hidden=false;$('export').disabled=false;
   $('snapshot').textContent=`${date(data.exported_at)} KST`;
   $('provider').innerHTML='<option value="all">전체</option>'+[...new Set(data.responses.map(r=>r.provider))].sort().map(p=>`<option value="${esc(p)}">${esc(providerName[p]||p)}</option>`).join('');
+  updateCollectionModels();
   const rubrics=new Map();
   for(const r of data.responses)for(const ref of r.references)if(ref.rubric_id){if(!rubrics.has(ref.rubric_id))rubrics.set(ref.rubric_id,{name:ref.rubric_name||ref.rubric_id,ids:new Set()});rubrics.get(ref.rubric_id).ids.add(r.task_id);}
   $('version').innerHTML=data.versions.map(v=>`<option value="${esc(v.id)}">${esc(v.name)} · ${v.responses}응답</option>`).join('');
@@ -21,45 +25,61 @@ function setData(value){
   const brands=new Map();for(const r of data.responses)for(const a of [...r.analyses,...r.references.map(x=>({entities:x.expected_output?.entities||[]}))])for(const e of a.entities)if(e.brand)brands.set(brandKey(e.brand),e.brand);
   if(!brands.has('hyundai'))brands.set('hyundai','Hyundai');
   $('target-brand').innerHTML=[...brands].sort((a,b)=>a[1].localeCompare(b[1])).map(([key,name])=>`<option value="${esc(key)}">${esc(name)}</option>`).join('');$('target-brand').value='hyundai';updateTargetModels();
-  const hash=new URLSearchParams(location.hash.slice(1));promptId=hash.get('prompt')||'';responseId=hash.get('response')||'';analysisId='';entityKey='';activeView=['prompts','responses','analysis'].includes(hash.get('view'))?hash.get('view'):'analysis';render();setView(activeView);
+  const hash=new URLSearchParams(location.hash.slice(1));promptId=hash.get('prompt')||'';responseId=hash.get('response')||'';analysisId='';entityKey='';activeView=hash.get('view')==='analysis'?'analysis':'responses';if(promptId)expandedPrompts.add(promptId);setView(activeView);
 }
+function saveSelection(){
+  try{localStorage.setItem(SELECTION_STORAGE,JSON.stringify({source:data.source,version:data.export_info?.export_version,ids:[...selectedResponses]}));}catch{toast('선택을 브라우저에 저장하지 못했습니다.');}
+}
+function updateCollectionModels(){
+  const previous=$('collection-model').value;
+  const models=[...new Set(data.responses.filter(r=>$('provider').value==='all'||r.provider===$('provider').value).map(r=>r.model_name))].sort();
+  $('collection-model').innerHTML='<option value="all">전체</option>'+models.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  if(models.includes(previous))$('collection-model').value=previous;
+}
+function selectedScope(){return responseScope(data.responses,selectedResponses,$('prompt-search').value,$('provider').value,$('collection-model').value);}
+function browseCandidates(){return $('selected-only').checked?selectionCandidates.filter(r=>selectedResponses.has(r.task_id)):selectionCandidates;}
 function render(){
-  const filtered=groupPrompts(data.responses,$('prompt-search').value,$('provider').value).flatMap(g=>g.responses);
-  selectionCandidates=filtered;renderSelection();
-  const included=filtered.filter(r=>selectedResponses.has(r.task_id));
-  renderAppliedPrompts(included);
+  const {candidates,selected:included}=selectedScope();
+  selectionCandidates=candidates;renderSelection();
   const aggregate=aggregateResponses(included,version(),$('target-brand').value,$('target-model').value);
   population=aggregate.rows.map(row=>row.response);renderOverview(aggregate,included.length);
   groups=groupPrompts(drill?aggregate.rows.filter(row=>row.signals[drill]===true).map(row=>row.response):included);
   if(!groups.some(g=>g.id===promptId)){promptId=groups[0]?.id||'';responseId='';analysisId='';}
-  const visible=groups.flatMap(g=>g.responses),analysed=coverage(visible,version());
-  $('counts').innerHTML=`<span>프롬프트<strong>${data.counts.prompts_with_responses}</strong></span><span>전체 응답<strong>${data.responses.length}</strong></span><span>집계<strong>${population.length}</strong></span>`;
-  $('drill-note').textContent=drill?`${metricNames[drill]} 해당 ${visible.length}건`:`전체 ${visible.length}건`;$('clear-drill').hidden=!drill;
-  $('prompt-count').textContent=groups.length+'개 프롬프트';
-  $('prompt-list').innerHTML=groups.map(g=>`<button class="prompt-item ${g.id===promptId?'active':''}" data-prompt="${esc(g.id)}" ${g.id===promptId?'aria-current="true"':''}><code>${esc(g.id)}</code><span>${esc(g.text)}</span><small>응답 ${g.responses.length}</small></button>`).join('')||'<div class="blank">검색 결과 없음</div>';
-  $('detail').hidden=!groups.length;$('no-prompt').hidden=!!groups.length;$('export').disabled=!visible.length;
-  if(groups.length)renderPrompt();
-}
-function renderAppliedPrompts(responses){
-  const prompts=groupPrompts(responses);
-  $('applied-prompt-count').textContent=prompts.length+'개';
-  $('applied-prompt-list').innerHTML=prompts.map(p=>`<tr><td><code>${esc(p.id)}</code></td><td class="applied-text">${esc(p.text)}</td><td class="applied-models">${[...new Set(p.responses.map(r=>r.model_name))].map(name=>`<span>${esc(name)}</span>`).join('')}</td><td class="applied-count">${p.responses.length}</td><td><button class="small" data-open-prompt="${esc(p.id)}">응답 보기</button></td></tr>`).join('')||'<tr><td colspan="5" class="blank">검색 결과 없음</td></tr>';
+  const visible=groups.flatMap(g=>g.responses);
+  $('counts').innerHTML=`<span>프롬프트<strong>${groupPrompts(candidates).length}</strong></span><span>응답<strong>${candidates.length}</strong></span><span>선택<strong>${included.length}</strong></span>`;
+  $('drill-note').textContent=drill?`${metricNames[drill]} 해당 ${visible.length}건`:`선택 응답 ${visible.length}건`;$('clear-drill').hidden=!drill;
+  $('prompt-count').textContent=groups.length+'개';
+  $('prompt-list').innerHTML=groups.map(g=>`<button class="prompt-item ${g.id===promptId?'active':''}" data-prompt="${esc(g.id)}" ${g.id===promptId?'aria-current="true"':''}><span>${esc(promptPresentation(g.text).title)}</span><small>응답 ${g.responses.length} · ${esc(g.id)}</small></button>`).join('')||'<div class="blank">해당 응답 없음</div>';
+  $('detail').hidden=!groups.length;$('no-prompt').hidden=!!groups.length;$('export').disabled=!included.length;
+  if(groups.length)renderPrompt();else{currentResponse=null;currentAnalysis=null;currentEntities=[];responseId='';analysisId='';$('analysis-export').disabled=true;}
+  const selectedHidden=selectedResponses.size-included.length;
+  $('selected-summary').textContent=`분석 대상 ${included.length}개${selectedHidden?' · 필터 밖 선택 '+selectedHidden+'개':''}`;
+  $('show-analysis').textContent=`분석 결과 보기 (${included.length})`;$('show-analysis').disabled=!included.length;
+  $('analysis-selection-count').textContent=`선택 응답 ${included.length}개 · 프롬프트 ${groupPrompts(included).length}개${selectedHidden?' · 필터 밖 선택 '+selectedHidden+'개':''}`;
+  applyView();syncLocation();
 }
 function renderSelection(){
-  const list=$('selection-list'),opened=new Set([...list.querySelectorAll('details[open]')].map(e=>e.dataset.promptGroup));
-  const active=document.activeElement,focusResponse=active?.dataset?.responseSelect,focusPrompt=active?.dataset?.promptSelect;
-  const promptGroups=groupPrompts(selectionCandidates),visible=selectionState(selectionCandidates,selectedResponses);
-  $('selection-count').textContent=`전체 ${selectedResponses.size}/${data.responses.length}응답 선택 · 현재 목록 ${visible.count}/${selectionCandidates.length}`;
-  $('select-visible').disabled=!selectionCandidates.length||visible.checked;$('deselect-visible').disabled=!visible.count;
-  list.innerHTML=promptGroups.map(g=>{
-    const state=selectionState(g.responses,selectedResponses);
-    return `<div class="selection-group"><label class="prompt-check"><input type="checkbox" data-prompt-select="${esc(g.id)}" ${state.checked?'checked':''} aria-label="${esc(g.id)} 전체 응답 선택"></label><details data-prompt-group="${esc(g.id)}" ${opened.has(g.id)?'open':''}><summary><code>${esc(g.id)}</code><span>${esc(g.text)}</span><small>${state.count}/${g.responses.length}</small></summary><div class="response-choices">${g.responses.map(r=>{
+  const list=$('selection-list'),active=document.activeElement;
+  const focusResponse=active?.dataset?.responseSelect,focusPrompt=active?.dataset?.promptSelect,focusToggle=active?.dataset?.togglePrompt;
+  const eligible=browseCandidates();
+  const promptGroups=groupPrompts(eligible),visible=selectionState(eligible,selectedResponses);
+  browsePage=Math.min(browsePage,Math.max(0,Math.ceil(promptGroups.length/20)-1));
+  const pageGroups=promptGroups.slice(browsePage*20,browsePage*20+20);
+  $('browse-count').textContent=`${promptGroups.length}개 · 응답 ${eligible.length}개`;
+  $('select-visible').disabled=!eligible.length||visible.checked;$('deselect-visible').disabled=!visible.count;
+  $('expand-groups').disabled=!pageGroups.length;
+  $('expand-groups').textContent=pageGroups.length&&pageGroups.every(g=>expandedPrompts.has(g.id))?'모두 접기':'모두 펼치기';
+  list.innerHTML=pageGroups.map(g=>{
+    const choice=selectionState(g.responses,selectedResponses),label=promptPresentation(g.text),open=expandedPrompts.has(g.id);
+    return `<article class="browse-group"><div class="browse-group-heading"><input type="checkbox" data-prompt-select="${esc(g.id)}" ${choice.checked?'checked':''} aria-label="${esc(label.title)} 전체 응답 선택"><button class="question-toggle" data-toggle-prompt="${esc(g.id)}" aria-expanded="${open}" aria-controls="responses-${esc(g.id)}"><span class="disclosure" aria-hidden="true">${open?'▾':'▸'}</span><span><strong>${esc(label.title)}</strong><small>${esc([label.kind,label.market,g.id].filter(Boolean).join(' · '))}</small></span></button><span class="group-models">${[...new Set(g.responses.map(r=>providerName[r.provider]||r.provider))].map(p=>`<span>${esc(p)}</span>`).join('')}</span><span class="group-count">${choice.count}/${g.responses.length} 선택</span><button class="raw-button" data-raw-prompt="${esc(g.id)}" aria-label="${esc(label.title)} 프롬프트 원문">원문</button></div><div id="responses-${esc(g.id)}" class="response-rows" ${open?'':'hidden'}>${g.responses.map(r=>{
       const a=selectAnalysis(r,version()),status=analysisStatusText(a);
-      return `<label class="response-choice"><input type="checkbox" data-response-select="${esc(r.task_id)}" ${selectedResponses.has(r.task_id)?'checked':''}><span><strong>${esc(providerName[r.provider]||r.provider)}</strong> · ${esc(r.model_name)} <small>${esc(date(r.collected_at))} · ${esc(r.task_id.slice(0,8))}${status?' · '+status:''}</small></span></label>`;
-    }).join('')}</div></details></div>`;
-  }).join('')||'<div class="blank">현재 필터에 해당하는 응답이 없습니다.</div>';
+      return `<div class="browse-response"><input type="checkbox" data-response-select="${esc(r.task_id)}" ${selectedResponses.has(r.task_id)?'checked':''} aria-label="${esc(label.title+' · '+r.model_name)} 선택"><div class="response-model"><strong>${esc(r.model_name)}</strong><small>${esc(providerName[r.provider]||r.provider)}</small></div><time>${esc(date(r.collected_at))}</time><span class="response-status ${a?.analysis_status==='SUCCEEDED'?'complete':'partial'}">${esc(status?.split(' · ')[0]||'미분석')}</span><button class="raw-button" data-raw-response="${esc(r.task_id)}" aria-label="${esc(label.title+' · '+r.model_name)} 응답 원문">원문 보기</button></div>`;
+    }).join('')}</div></article>`;
+  }).join('')||'<div class="blank">해당 응답이 없습니다.</div>';
   for(const box of list.querySelectorAll('[data-prompt-select]'))box.indeterminate=selectionState(promptGroups.find(g=>g.id===box.dataset.promptSelect).responses,selectedResponses).indeterminate;
-  if(focusResponse||focusPrompt){const box=[...list.querySelectorAll('input')].find(e=>focusResponse?e.dataset.responseSelect===focusResponse:e.dataset.promptSelect===focusPrompt);box?.focus({preventScroll:true});}
+  if(focusResponse||focusPrompt||focusToggle){const el=[...list.querySelectorAll('input,button')].find(e=>focusResponse?e.dataset.responseSelect===focusResponse:focusPrompt?e.dataset.promptSelect===focusPrompt:e.dataset.togglePrompt===focusToggle);el?.focus({preventScroll:true});}
+  $('browse-page').textContent=promptGroups.length?`${browsePage*20+1}–${Math.min((browsePage+1)*20,promptGroups.length)} / ${promptGroups.length}개 프롬프트`:'0개';
+  $('browse-previous').disabled=!browsePage;$('browse-next').disabled=(browsePage+1)*20>=promptGroups.length;
 }
 function updateTargetModels(){
   const models=new Map();for(const r of data.responses)for(const a of [selectAnalysis(r,version())].filter(Boolean))for(const e of a.entities)if(brandKey(e.brand)===$('target-brand').value&&e.model&&targetKey(e.model)!=='null')models.set(targetKey(e.model),e.model);
@@ -77,22 +97,39 @@ function renderPrompt(){
   const g=groups.find(g=>g.id===promptId);
   if(!g.responses.some(r=>r.task_id===responseId)){responseId=g.responses[0].task_id;analysisId='';}
   currentResponse=g.responses.find(r=>r.task_id===responseId);
-  $('prompt-id').textContent=g.id;$('prompt-text').textContent=currentResponse.prompt_text;
+  $('prompt-id').textContent=g.id;$('prompt-text').textContent=promptPresentation(currentResponse.prompt_text).title;
   $('response-tabs').innerHTML=g.responses.map(r=>`<button data-response="${esc(r.task_id)}" class="${r.task_id===responseId?'active':''}" aria-pressed="${r.task_id===responseId}"><strong>${esc(providerName[r.provider]||r.provider)}</strong><small>${esc(r.model_name)}${g.responses.filter(x=>x.provider===r.provider).length>1?' · '+esc(r.response_id.slice(0,8)):''}</small></button>`).join('');
-  $('response-meta').innerHTML=`수집 ${esc(date(currentResponse.collected_at))} KST · 웹 검색 ${currentResponse.web_search_enabled===true?'사용':currentResponse.web_search_enabled===false?'미사용':'미제공'}<details><summary>응답 식별 정보</summary>응답 ID: ${esc(responseId)}</details>`;
+  $('response-meta').textContent=`${currentResponse.model_name} · ${date(currentResponse.collected_at)}`;
   syncLocation();
-  evidence='';$('source-text').scrollTop=0;renderSource();
-  $('reasoning-wrap').hidden=!currentResponse.reasoning_summary;$('reasoning-text').textContent=currentResponse.reasoning_summary||'';$('reasoning-wrap').open=false;
   const candidates=availableAnalyses(currentResponse,version());
   currentAnalysis=selectAnalysis(currentResponse,version(),analysisId);analysisId=currentAnalysis?.analysis_id||'';
   $('analysis-picker').innerHTML=candidates.length?candidates.map(a=>`<option value="${esc(a.analysis_id)}" ${a.analysis_id===analysisId?'selected':''}>${esc(date(a.analyzed_at))} · ${deploymentLabel(data,a.judge_version_id)?'['+deploymentLabel(data,a.judge_version_id)+'] ':''}${esc(a.judge_name)}</option>`).join(''):'<option>저장 결과 없음</option>';
   $('analysis-picker').disabled=!candidates.length;$('analysis-picker').closest('.analysis-picker').hidden=candidates.length<2;
   renderAnalysis();
 }
-function renderSource(){
-  $('source-text').innerHTML=highlighted(currentResponse.response_text,evidence);$('clear-evidence').hidden=!evidence;
-  if(evidence){const mark=$('evidence-match');if(mark){$('source-text').scrollTop=mark.offsetTop-$('source-text').offsetTop-35;}else toast('현재 원문에서 동일한 근거를 찾지 못했습니다.');}
+function openSource(response,prompt){
+  sourceResponse=response||null;evidence='';
+  const text=response?.prompt_text||prompt?.text||'',identity=response?.prompt_id||prompt?.id||'';
+  $('source-title').textContent=promptPresentation(text).title;
+  $('source-kind').textContent=response?'응답 원문':'프롬프트 원문';
+  $('raw-prompt-text').textContent=text;$('raw-prompt-id').textContent=identity;
+  $('raw-response').hidden=!response;
+  if(response){
+    $('raw-response-meta').textContent=`${providerName[response.provider]||response.provider} · ${response.model_name} · ${date(response.collected_at)} KST`;
+    $('raw-response-id').textContent=response.task_id;
+    $('reasoning-wrap').hidden=!response.reasoning_summary;$('reasoning-text').textContent=response.reasoning_summary||'';$('reasoning-wrap').open=false;
+    renderSource();$('source-text').scrollTop=0;
+  }
+  $('source-dialog').showModal();$('source-dialog').querySelector('.drawer-content').scrollTop=0;
 }
+function renderSource(){
+  if(!sourceResponse)return;
+  $('source-text').innerHTML=highlighted(sourceResponse.response_text,evidence);$('clear-evidence').hidden=!evidence;
+  if(evidence){const mark=$('evidence-match');if(mark)mark.scrollIntoView({block:'center'});else toast('현재 원문에서 동일한 근거를 찾지 못했습니다.');}
+}
+$('close-source').onclick=()=>$('source-dialog').close();
+$('source-dialog').addEventListener('click',e=>{if(e.target===$('source-dialog')){const rect=e.target.getBoundingClientRect();if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)e.target.close();}});
+$('open-current-source').onclick=()=>{if(currentResponse&&selectedResponses.has(currentResponse.task_id))openSource(currentResponse);};
 function renderAnalysis(){
   const a=currentAnalysis;
   $('analysis-export').disabled=!a;$('no-analysis').hidden=!!a;$('analysis-content').hidden=!a;
@@ -131,23 +168,21 @@ function renderAssessments(){
   $('assessments').innerHTML=e.kbf_assessments.map((k,i)=>({...k,index:i})).filter(k=>($('category').value==='all'||(k.category_id||'unclassified')===$('category').value)&&($('sentiment').value==='all'||k.sentiment===$('sentiment').value)).map(k=>`<article class="assessment"><div class="assessment-head"><span class="sentiment ${k.sentiment==='POSITIVE'?'positive':k.sentiment==='NEGATIVE'?'negative':''}">${esc(sentiments[k.sentiment]||k.sentiment)}</span><strong>${esc(categoryName(k.category_id))}</strong></div><blockquote>${esc(k.evidence)}</blockquote><button class="small" data-evidence="${k.index}">원문에서 보기</button></article>`).join('')||'<div class="blank">해당 KBF 평가가 없습니다.</div>';
 }
 function syncLocation(){history.replaceState(null,'','#'+new URLSearchParams({view:activeView,...(promptId?{prompt:promptId}:{}),...(responseId?{response:responseId}:{})}));}
-function setView(view,{resetScroll=false}={}){
-  activeView=['prompts','responses','analysis'].includes(view)?view:'analysis';
-  const analysis=activeView==='analysis';
-  $('overview-view').hidden=!analysis;
-  $('prompts-view').hidden=activeView!=='prompts';
-  $('details-view').hidden=activeView==='prompts';
-  $('export').hidden=activeView==='prompts';
-  document.querySelector('.analysis-panel').hidden=!analysis;
-  $('details-view').classList.toggle('responses-only',!analysis);
-  $('page-title').textContent={prompts:'프롬프트',responses:'응답 결과',analysis:'분석 결과'}[activeView];
-  $('detail-title').textContent=analysis?'모델별 분석':'응답별 상세';
+function applyView(){
+  const analysis=activeView==='analysis',included=selectedScope().selected.length;
+  $('browse-view').hidden=analysis;$('analysis-selection').hidden=!analysis;
+  $('overview-view').hidden=!analysis||!included;$('details-view').hidden=!analysis||!included;
+  $('analysis-empty').hidden=!analysis||!!included;
+  $('page-title').textContent=analysis?'분석 결과':'프롬프트·응답';
+  $('detail-title').textContent='응답별 분석';
   for(const link of document.querySelectorAll('[data-view]')){
-    if(link.dataset.view===activeView)link.setAttribute('aria-current','page');
-    else link.removeAttribute('aria-current');
+    if(link.dataset.view===activeView)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');
   }
-  if(!analysis&&drill){drill='';render();}
-  syncLocation();
+}
+function setView(view,{resetScroll=false}={}){
+  activeView=view==='analysis'?'analysis':'responses';
+  if(activeView!=='analysis')drill='';
+  render();
   if(resetScroll)window.scrollTo({top:0,behavior:'instant'});
 }
 for(const link of document.querySelectorAll('[data-view]'))link.onclick=e=>{
@@ -157,35 +192,51 @@ for(const link of document.querySelectorAll('[data-view]'))link.onclick=e=>{
 window.addEventListener('hashchange',()=>{
   if(!data)return;
   const hash=new URLSearchParams(location.hash.slice(1));
+  promptId=hash.get('prompt')||promptId;responseId=hash.get('response')||responseId;analysisId='';
   setView(hash.get('view'),{resetScroll:true});
 });
 document.querySelector('.skip-link').onclick=e=>{e.preventDefault();$('main-content').focus();};
-$('applied-prompt-list').onclick=e=>{const button=e.target.closest('[data-open-prompt]');if(!button)return;promptId=button.dataset.openPrompt;responseId='';analysisId='';drill='';render();setView('responses',{resetScroll:true});};
+$('selection-list').onclick=e=>{
+  const toggle=e.target.closest('[data-toggle-prompt]'),rawPrompt=e.target.closest('[data-raw-prompt]'),rawResponse=e.target.closest('[data-raw-response]');
+  if(toggle){const id=toggle.dataset.togglePrompt;expandedPrompts.has(id)?expandedPrompts.delete(id):expandedPrompts.add(id);renderSelection();}
+  if(rawPrompt)openSource(null,groupPrompts(selectionCandidates).find(g=>g.id===rawPrompt.dataset.rawPrompt));
+  if(rawResponse)openSource(selectionCandidates.find(r=>r.task_id===rawResponse.dataset.rawResponse));
+};
+$('show-analysis').onclick=()=>setView('analysis',{resetScroll:true});
+$('change-selection').onclick=$('choose-responses').onclick=()=>setView('responses',{resetScroll:true});
+$('selected-only').onchange=()=>{browsePage=0;renderSelection();};
+$('browse-previous').onclick=()=>{browsePage--;renderSelection();$('browse-view').scrollIntoView({block:'start'});};
+$('browse-next').onclick=()=>{browsePage++;renderSelection();$('browse-view').scrollIntoView({block:'start'});};
+$('expand-groups').onclick=()=>{
+  const eligible=browseCandidates();
+  const pageGroups=groupPrompts(eligible).slice(browsePage*20,browsePage*20+20),collapse=pageGroups.every(g=>expandedPrompts.has(g.id));
+  for(const g of pageGroups)collapse?expandedPrompts.delete(g.id):expandedPrompts.add(g.id);
+  renderSelection();
+};
 $('prompt-list').onclick=e=>{const b=e.target.closest('[data-prompt]');if(b){promptId=b.dataset.prompt;responseId='';analysisId='';render();}};
 $('response-tabs').onclick=e=>{const b=e.target.closest('[data-response]');if(b){responseId=b.dataset.response;analysisId='';renderPrompt();}};
-$('provider').onchange=()=>{analysisId='';drill='';render();};$('version').onchange=()=>{analysisId='';drill='';updateTargetModels();render();};$('prompt-search').oninput=()=>{drill='';render();};
+$('provider').onchange=()=>{updateCollectionModels();browsePage=0;analysisId='';drill='';render();};$('collection-model').onchange=()=>{browsePage=0;analysisId='';drill='';render();};$('version').onchange=()=>{analysisId='';drill='';updateTargetModels();render();};$('prompt-search').oninput=()=>{browsePage=0;drill='';render();};
 $('target-brand').onchange=()=>{updateTargetModels();drill='';render();};$('target-model').onchange=()=>{drill='';render();};
 $('funnel').onclick=e=>{const b=e.target.closest('[data-metric]');if(b){drill=drill===b.dataset.metric?'':b.dataset.metric;render();$('response-details').scrollIntoView({block:'start'});$('response-details').focus({preventScroll:true});}};
 $('clear-drill').onclick=()=>{drill='';render();};
 $('selection-list').onchange=e=>{
   const box=e.target;if(box.dataset.responseSelect)selectedResponses=updateSelection(selectedResponses,selectionCandidates.filter(r=>r.task_id===box.dataset.responseSelect),box.checked);
   else if(box.dataset.promptSelect)selectedResponses=updateSelection(selectedResponses,selectionCandidates.filter(r=>r.prompt_id===box.dataset.promptSelect),box.checked);
-  else return;drill='';analysisId='';render();
+  else return;saveSelection();drill='';analysisId='';render();
 };
-$('select-visible').onclick=()=>{selectedResponses=updateSelection(selectedResponses,selectionCandidates,true);drill='';render();};
-$('deselect-visible').onclick=()=>{selectedResponses=updateSelection(selectedResponses,selectionCandidates,false);drill='';render();};
-$('reset-selection').onclick=()=>{selectedResponses=new Set(data.responses.map(r=>r.task_id));drill='';render();};
+$('select-visible').onclick=()=>{selectedResponses=updateSelection(selectedResponses,browseCandidates(),true);saveSelection();drill='';render();};
+$('deselect-visible').onclick=()=>{selectedResponses=updateSelection(selectedResponses,browseCandidates(),false);saveSelection();drill='';render();};
 $('analysis-picker').onchange=e=>{analysisId=e.target.value;currentAnalysis=selectAnalysis(currentResponse,version(),analysisId);evidence='';renderSource();renderAnalysis();};
 $('entity-search').oninput=$('recommended').onchange=$('top-only').onchange=$('entity-sort').onchange=renderEntities;
 $('entities').onclick=e=>{const b=e.target.closest('[data-entity]');if(b){entityKey=b.dataset.entity;$('category').value='all';$('sentiment').value='all';renderEntities();}};
 $('category').onchange=$('sentiment').onchange=renderAssessments;
-function showEvidence(value){evidence=value;renderSource();if(evidence&&currentResponse.response_text.includes(evidence)){$('source-text').focus({preventScroll:true});if(innerWidth<=1100)$('source-text').scrollIntoView({block:'center'});}}
+function showEvidence(value){if(!currentResponse||!selectedResponses.has(currentResponse.task_id))return;openSource(currentResponse);evidence=value;renderSource();$('source-text').focus({preventScroll:true});}
 $('assessments').onclick=e=>{const b=e.target.closest('[data-evidence]');if(b)showEvidence(currentEntities.find(x=>x.key===entityKey).kbf_assessments[Number(b.dataset.evidence)].evidence);};
 $('recommendation').onclick=e=>{const b=e.target.closest('[data-recommendation]');if(b)showEvidence(recommendationEvidence(currentEntities.find(x=>x.key===entityKey))[Number(b.dataset.recommendation)]?.evidence||'');};
 $('clear-evidence').onclick=()=>{evidence='';renderSource();};
 function download(value,name,type){const url=URL.createObjectURL(new Blob([value],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);}
-$('export').onclick=()=>{const rows=groups.flatMap(g=>g.responses);download(csv([['prompt_id','prompt_text','response_id','provider','model_name','collected_at','analysis_status','response_text'],...rows.map(r=>[r.prompt_id,r.prompt_text,r.task_id,r.provider,r.model_name,r.collected_at,selectAnalysis(r,version())?.analysis_status,r.response_text])]),'geo-responses.csv','text/csv;charset=utf-8');toast(rows.length+'개 응답을 내려받았습니다.');};
-$('analysis-export').onclick=()=>download(JSON.stringify({prompt_id:promptId,response_id:responseId,analysis:currentAnalysis},null,2),'geo-analysis-'+promptId+'.json','application/json');
+$('export').onclick=()=>{const rows=activeView==='analysis'?groups.flatMap(g=>g.responses):selectedScope().selected;if(!rows.length)return;download(csv([['prompt_id','prompt_text','response_id','provider','model_name','collected_at','analysis_status','response_text'],...rows.map(r=>[r.prompt_id,r.prompt_text,r.task_id,r.provider,r.model_name,r.collected_at,selectAnalysis(r,version())?.analysis_status,r.response_text])]),'geo-responses.csv','text/csv;charset=utf-8');toast(rows.length+'개 응답을 내려받았습니다.');};
+$('analysis-export').onclick=()=>{if(currentAnalysis&&selectedResponses.has(responseId))download(JSON.stringify({prompt_id:promptId,response_id:responseId,analysis:currentAnalysis},null,2),'geo-analysis-'+promptId+'.json','application/json');};
 $('import').onclick=$('open-data').onclick=()=>$('data-file').click();
 $('data-file').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>100*1024**2)throw Error('100MB 이하의 데이터 파일을 선택하세요.');setData(JSON.parse(await file.text()));toast('데이터를 불러왔습니다.');}catch(error){toast(error.message);}finally{e.target.value='';}};
 try{const response=await fetch('./data.json',{cache:'no-store'});if(!response.ok)throw Error('데이터 파일을 열어 시작하세요.');setData(await response.json());}

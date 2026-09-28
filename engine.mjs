@@ -235,3 +235,32 @@ export function generateIndependent(s){
   for(const result of results)for(const row of result.rows){if(seen.has(row.prompt_text)){duplicates++;if(s.dedupe)continue;}seen.add(row.prompt_text);rows.push({...row,number:rows.length+1});}
   return {rows,errors:[],total,duplicates};
 }
+
+// The accumulated list is independent of the current template/parameter selection.
+// Exact text defines duplicates; the first saved row retains its provenance.
+export function appendPromptList(existing, incoming) {
+  if(!Array.isArray(existing)||!Array.isArray(incoming))throw Error('프롬프트 목록 형식을 확인하세요.');
+  const rows=[],seen=new Set();let added=0,duplicates=0;
+  for(const [index,list] of [existing,incoming].entries())for(const row of list){
+    if(!row||typeof row.prompt_text!=='string'||!row.prompt_text.trim()||row.prompt_text.length>100000||
+       !['template_set','template_name','parameter_set'].every(k=>typeof row[k]==='string'&&row[k].length<=1000)||
+       !row.parameters||typeof row.parameters!=='object'||Array.isArray(row.parameters)||
+       Object.entries(row.parameters).some(([k,v])=>k.length>200||typeof v!=='string'||v.length>50000))throw Error('프롬프트 목록 형식을 확인하세요.');
+    if(seen.has(row.prompt_text)){if(index===1)duplicates++;continue;}
+    seen.add(row.prompt_text);rows.push({...structuredClone(row),number:rows.length+1});if(index===1)added++;
+    if(rows.length>LIMIT)throw Error('목록은 10,000개까지 저장할 수 있습니다.');
+  }
+  return {rows,added,duplicates};
+}
+
+export function restoreWorkspace(state) {
+  const saved=state.workspace;
+  if(saved&&(saved.version!==1||!Array.isArray(saved.rows)))throw Error('저장된 작업 형식을 확인하세요.');
+  const source=saved?saved.composer:state.combinations.find(c=>c.enabled);
+  const composer=source?structuredClone(source):null;
+  if(composer){
+    composer.enabled=true;
+    validateParameters({...state,combinations:[composer]});
+  }
+  return {version:1,composer,rows:appendPromptList([],saved?.rows||[]).rows};
+}

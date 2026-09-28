@@ -6,3 +6,21 @@
 @media(max-width:680px){.topbar{height:auto;min-height:56px;padding:12px 16px;flex-wrap:wrap;gap:8px}.brand{font-size:14px}.top-actions{margin-left:auto}.top-actions button{font-size:11px;padding:5px}.app-nav{padding:0 16px;gap:24px}.app-nav button{font-size:12px}.view-toolbar{align-items:flex-start;flex-wrap:wrap;gap:12px}main{padding:18px 16px}.toolbar-actions{width:100%}.toolbar-actions input{flex:1;width:0}.table-scroll{overflow:visible;border:0}.library-table{display:block}.library-table thead{display:none}.library-table tbody{display:block}.library-table tr{display:grid;grid-template-columns:minmax(0,1fr) 100px;border:1px solid var(--line);border-radius:4px;margin-bottom:9px;padding:12px;gap:8px}.library-table td{display:block;padding:0;border:0}.library-table td:first-child{grid-column:1;grid-row:1}.library-table td:nth-child(2){grid-column:1 / -1;grid-row:2}.library-table td:nth-child(3){grid-column:1;grid-row:3;text-align:left;font-size:11px}.library-table td:nth-child(3):after{content:'개'}.library-table td:last-child{grid-column:2;grid-row:1;text-align:right}.library-table td[colspan]{grid-column:1 / -1;grid-row:auto}.workspace{grid-template-columns:minmax(0,1fr)}.combination-list{max-height:460px;min-height:140px}.results{height:380px}.result-row,.results-head{grid-template-columns:48px 1fr;gap:8px}.library-editor{padding:18px}.modal-heading{margin-bottom:16px}h1{font-size:17px}}
 
 .service-link{font-size:12px;color:var(--muted);text-decoration:none;padding:7px 10px;border-radius:4px}.service-link:hover{background:#eef1f6;color:var(--accent)}
+
+/* Shared service hierarchy: service navigation, local tasks, working content. */
+body{background:#f5f6f8}
+.suite-header{height:60px;padding:0 28px;display:flex;align-items:center;justify-content:space-between;gap:24px;background:#202a39;color:#fff;position:sticky;top:0;z-index:30;border-bottom:1px solid #344053}
+.service-nav{display:flex;align-items:stretch;align-self:stretch;gap:30px;min-width:0}
+.service-nav a{display:flex;align-items:center;border-bottom:3px solid transparent;padding:2px 0 0;color:#b9c4d3;font-size:16px;font-weight:500;text-decoration:none;white-space:nowrap}
+.service-nav a:hover{color:#fff;text-decoration:none}.service-nav a[aria-current=page]{color:#fff;border-bottom-color:#91b9ff;font-weight:650}
+.suite-brand{font-size:10px;letter-spacing:1.6px;color:#b9c4d3;font-weight:600}
+.service-toolbar{min-height:54px;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:0 28px;background:#fff;border-bottom:1px solid var(--line)}
+.service-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.service-actions button{font-size:12px}.service-actions .save-state{margin-right:8px}
+main{max-width:1800px;padding:26px 28px 40px;margin:auto}main:focus{outline:none}h1{font-size:20px;font-weight:650;letter-spacing:-.5px}
+.skip-link{position:fixed;top:-80px;left:16px;padding:10px 14px;background:white;color:#202a39;z-index:50}.skip-link:focus{top:8px}
+@media(max-width:760px){.suite-header{padding:0 16px;gap:12px;height:56px}.service-nav{gap:22px}.service-nav a{font-size:14px}.suite-brand{display:none}.service-toolbar{padding:0 16px;flex-wrap:wrap;gap:0}.service-actions{padding:9px 0;width:100%;border-top:1px solid var(--line)}main{padding:20px 16px 32px}}
+
+.app-nav{border:0;padding:0;gap:22px;align-items:center;min-height:54px}.app-nav button{padding:17px 0 15px}.library-nav{display:flex;gap:22px;position:relative;padding-right:23px}.library-nav:after{content:'';position:absolute;right:0;top:18px;bottom:18px;border-right:1px solid var(--line)}
+#library-view{background:#fff;border:1px solid var(--line);border-radius:6px;padding:22px}.panel{background:#fff;border-radius:6px}.panel-heading{background:#fafbfc}.view-toolbar{margin-bottom:20px}.library-table td{padding-top:17px;padding-bottom:17px}.table-scroll{border-radius:4px}.workspace{gap:24px;grid-template-columns:minmax(330px,420px) minmax(0,1fr)}
+@media(max-width:980px){.workspace{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:760px){.service-actions .save-state{margin-right:auto}#library-view{padding:16px}.app-nav{gap:20px}.library-nav{gap:20px;padding-right:21px}.app-nav button{font-size:12px}.library-table tr{background:#fff}}

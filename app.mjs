@@ -17,6 +17,7 @@ function navigate(view){
   for(const name of ['templates','parameters','compose']){const active=name===view;$(name+'-view').hidden=!active;$(name+'-nav').classList.toggle('active',active);active?$(name+'-nav').setAttribute('aria-current','page'):$(name+'-nav').removeAttribute('aria-current');}
   if(location.hash!=='#'+view)location.hash=view;
 }
+document.querySelector('.skip-link').onclick=e=>{e.preventDefault();$('main-content').focus();};
 for(const name of ['templates','parameters','compose'])$(name+'-nav').onclick=()=>navigate(name);
 window.addEventListener('hashchange',()=>navigate(location.hash.slice(1)));
 function renderLibrary(){

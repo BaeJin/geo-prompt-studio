@@ -1,4 +1,4 @@
-import {toCSV,valuesOf,migrateParameters as migrateStudio,loadIndependentTemplate as loadTemplate,bindParameter,requiredSlots,generateIndependent,appendPromptList,restoreWorkspace} from './engine.mjs?v=b1b3a27936bd';
+import {toCSV,valuesOf,migrateParameters as migrateStudio,loadIndependentTemplate as loadTemplate,bindParameter,requiredSlots,generateIndependent,appendPromptList,restoreWorkspace} from './engine.mjs?v=4a7f25ce68be';
 import {sample} from './sample.mjs';
 const $=id=>document.getElementById(id), uid=()=>crypto.randomUUID();
 const esc=text=>String(text??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -91,8 +91,6 @@ function renderComposer(){
     return `<div class="parameter-choice" data-slot="${esc(slot)}"><label class="field-label" for="parameter-${i}">{${esc(slot)}}</label><select id="parameter-${i}" data-slot="${esc(slot)}" aria-label="${esc(slot)} 파라미터"><option value="">파라미터 선택</option>${p&&!original?`<option value="${esc(p.id)}" selected>${esc(p.name)} (사본)</option>`:''}${state.library.parameters.map(v=>`<option value="${esc(v.id)}" ${p?.id===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select>${p?`<div class="parameter-detail"><span>${esc(p.values.trim().split(/\r?\n/).slice(0,3).join(', '))}${p.values.trim().split(/\r?\n/).length>3?' …':''}</span>${changed?'<button class="quiet small" data-refresh>업데이트</button>':''}</div>`:''}</div>`;
   }).join(''):'';
   $('parameter-choices').hidden=!c||!requiredSlots(c.templateSet).length;
-  $('compose-options').hidden=!c||requiredSlots(c.templateSet).length<2;
-  $('compose-mode').value=c?.mode||'product';
   $('generate').disabled=!c;
 }
 $('parameter-choices').onchange=e=>{
@@ -108,7 +106,6 @@ $('parameter-choices').onclick=e=>{
   bindParameter({...state,combinations:[composer]},composer.id,slot,composer.bindings.find(b=>b.slot===slot).parameter.id);
   invalidatePreview();persist();renderComposer();
 };
-$('compose-mode').onchange=e=>{if(composer){composer.mode=e.target.value;invalidatePreview();persist();}};
 function renderPending(){
   $('generated-preview').hidden=!pendingRows.length;
   if(!pendingRows.length)return;

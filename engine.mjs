@@ -260,6 +260,8 @@ export function restoreWorkspace(state) {
   const composer=source?structuredClone(source):null;
   if(composer){
     composer.enabled=true;
+    // Current UI always uses the Cartesian product, including restored older settings.
+    composer.mode='product';
     validateParameters({...state,combinations:[composer]});
   }
   return {version:1,composer,rows:appendPromptList([],saved?.rows||[]).rows};

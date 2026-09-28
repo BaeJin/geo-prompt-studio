@@ -1,6 +1,7 @@
 import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText,sortEntities,latestSchemaData,brandKey,targetKey,aggregateResponses,deploymentLabel,selectionState,updateSelection,analysisStatusText,sentimentScore} from './model.mjs?v=5671ab6f6463';
 const $=id=>document.getElementById(id), providerName={OPENAI:'OpenAI',GOOGLE:'Google',ANTHROPIC:'Anthropic'},sentiments={POSITIVE:'긍정',NEUTRAL:'중립',NEGATIVE:'부정'};
 let data,groups=[],promptId='',responseId='',analysisId='',entityKey='',currentResponse,currentAnalysis,currentEntities=[],evidence='',timer;
+let activeView='analysis';
 let drill='',population=[],selectedResponses=new Set(),selectionCandidates=[];
 const metricNames={exposure:'노출',positive:'긍정 노출',recommended:'추천',top:'최우선 추천'};
 const percent=(count,total)=>total?(count/total*100).toFixed(1)+'%':'—';
@@ -20,7 +21,7 @@ function setData(value){
   const brands=new Map();for(const r of data.responses)for(const a of [...r.analyses,...r.references.map(x=>({entities:x.expected_output?.entities||[]}))])for(const e of a.entities)if(e.brand)brands.set(brandKey(e.brand),e.brand);
   if(!brands.has('hyundai'))brands.set('hyundai','Hyundai');
   $('target-brand').innerHTML=[...brands].sort((a,b)=>a[1].localeCompare(b[1])).map(([key,name])=>`<option value="${esc(key)}">${esc(name)}</option>`).join('');$('target-brand').value='hyundai';updateTargetModels();
-  const hash=new URLSearchParams(location.hash.slice(1));promptId=hash.get('prompt')||'';responseId=hash.get('response')||'';analysisId='';entityKey='';render();
+  const hash=new URLSearchParams(location.hash.slice(1));promptId=hash.get('prompt')||'';responseId=hash.get('response')||'';analysisId='';entityKey='';activeView=hash.get('view')==='responses'?'responses':'analysis';render();setView(activeView);
 }
 function render(){
   const filtered=groupPrompts(data.responses,$('prompt-search').value,$('provider').value).flatMap(g=>g.responses);
@@ -73,7 +74,7 @@ function renderPrompt(){
   $('prompt-id').textContent=g.id;$('prompt-text').textContent=currentResponse.prompt_text;
   $('response-tabs').innerHTML=g.responses.map(r=>`<button data-response="${esc(r.task_id)}" class="${r.task_id===responseId?'active':''}" aria-pressed="${r.task_id===responseId}"><strong>${esc(providerName[r.provider]||r.provider)}</strong><small>${esc(r.model_name)}${g.responses.filter(x=>x.provider===r.provider).length>1?' · '+esc(r.response_id.slice(0,8)):''}</small></button>`).join('');
   $('response-meta').innerHTML=`수집 ${esc(date(currentResponse.collected_at))} KST · 웹 검색 ${currentResponse.web_search_enabled===true?'사용':currentResponse.web_search_enabled===false?'미사용':'미제공'}<details><summary>응답 식별 정보</summary>응답 ID: ${esc(responseId)}</details>`;
-  history.replaceState(null,'','#'+new URLSearchParams({prompt:promptId,response:responseId}));
+  syncLocation();
   evidence='';$('source-text').scrollTop=0;renderSource();
   $('reasoning-wrap').hidden=!currentResponse.reasoning_summary;$('reasoning-text').textContent=currentResponse.reasoning_summary||'';$('reasoning-wrap').open=false;
   const candidates=availableAnalyses(currentResponse,version());
@@ -123,13 +124,38 @@ function renderAssessments(){
   const e=currentEntities.find(e=>e.key===entityKey);if(!e)return;
   $('assessments').innerHTML=e.kbf_assessments.map((k,i)=>({...k,index:i})).filter(k=>($('category').value==='all'||(k.category_id||'unclassified')===$('category').value)&&($('sentiment').value==='all'||k.sentiment===$('sentiment').value)).map(k=>`<article class="assessment"><div class="assessment-head"><span class="sentiment ${k.sentiment==='POSITIVE'?'positive':k.sentiment==='NEGATIVE'?'negative':''}">${esc(sentiments[k.sentiment]||k.sentiment)}</span><strong>${esc(categoryName(k.category_id))}</strong></div><blockquote>${esc(k.evidence)}</blockquote><button class="small" data-evidence="${k.index}">원문에서 보기</button></article>`).join('')||'<div class="blank">해당 KBF 평가가 없습니다.</div>';
 }
-for(const button of document.querySelectorAll('[data-section]'))button.onclick=()=>{const section=$(button.dataset.section);section.scrollIntoView({block:'start'});section.focus({preventScroll:true});};
+function syncLocation(){history.replaceState(null,'','#'+new URLSearchParams({view:activeView,...(promptId?{prompt:promptId}:{}),...(responseId?{response:responseId}:{})}));}
+function setView(view,{resetScroll=false}={}){
+  activeView=view==='responses'?'responses':'analysis';
+  const analysis=activeView==='analysis';
+  $('overview-view').hidden=!analysis;
+  document.querySelector('.analysis-panel').hidden=!analysis;
+  $('details-view').classList.toggle('responses-only',!analysis);
+  $('page-title').textContent=analysis?'분석 결과':'응답 결과';
+  $('detail-title').textContent=analysis?'모델별 분석':'응답별 상세';
+  for(const link of document.querySelectorAll('[data-view]')){
+    if(link.dataset.view===activeView)link.setAttribute('aria-current','page');
+    else link.removeAttribute('aria-current');
+  }
+  if(!analysis&&drill){drill='';render();}
+  syncLocation();
+  if(resetScroll)window.scrollTo({top:0,behavior:'instant'});
+}
+for(const link of document.querySelectorAll('[data-view]'))link.onclick=e=>{
+  if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;
+  e.preventDefault();setView(link.dataset.view,{resetScroll:true});
+};
+window.addEventListener('hashchange',()=>{
+  if(!data)return;
+  const hash=new URLSearchParams(location.hash.slice(1));
+  setView(hash.get('view'),{resetScroll:true});
+});
 document.querySelector('.skip-link').onclick=e=>{e.preventDefault();$('main-content').focus();};
 $('prompt-list').onclick=e=>{const b=e.target.closest('[data-prompt]');if(b){promptId=b.dataset.prompt;responseId='';analysisId='';render();}};
 $('response-tabs').onclick=e=>{const b=e.target.closest('[data-response]');if(b){responseId=b.dataset.response;analysisId='';renderPrompt();}};
 $('provider').onchange=()=>{analysisId='';drill='';render();};$('version').onchange=()=>{analysisId='';drill='';updateTargetModels();render();};$('prompt-search').oninput=()=>{drill='';render();};
 $('target-brand').onchange=()=>{updateTargetModels();drill='';render();};$('target-model').onchange=()=>{drill='';render();};
-$('funnel').onclick=e=>{const b=e.target.closest('[data-metric]');if(b){drill=drill===b.dataset.metric?'':b.dataset.metric;render();document.querySelector('.detail-heading').scrollIntoView({block:'start'});}};
+$('funnel').onclick=e=>{const b=e.target.closest('[data-metric]');if(b){drill=drill===b.dataset.metric?'':b.dataset.metric;render();$('response-details').scrollIntoView({block:'start'});$('response-details').focus({preventScroll:true});}};
 $('clear-drill').onclick=()=>{drill='';render();};
 $('selection-list').onchange=e=>{
   const box=e.target;if(box.dataset.responseSelect)selectedResponses=updateSelection(selectedResponses,selectionCandidates.filter(r=>r.task_id===box.dataset.responseSelect),box.checked);

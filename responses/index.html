@@ -1,27 +1,28 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Response Explorer · DATACAST</title><link rel="stylesheet" href="styles.css?v=f5d79b135a45"><script type="module" src="app.mjs?v=64ff3d2e0a08"></script></head>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Response Explorer · DATACAST</title><link rel="stylesheet" href="styles.css?v=37d81ca311bf"><script type="module" src="app.mjs?v=accd8c883ba2"></script></head>
 <body>
-<a class="skip-link" href="#main-content">본문으로 이동</a><header class="suite-header"><nav class="service-nav" aria-label="서비스"><a href="https://baejin.github.io/geo-prompt-studio/">Prompt Studio</a><a href="https://baejin.github.io/geo-prompt-studio/responses/" aria-current="page">Response Explorer</a></nav><span class="suite-brand">DATACAST</span></header>
-<div class="service-toolbar"><nav class="section-nav" aria-label="Response Explorer 영역"><button data-section="overview-title">집계 결과</button><button data-section="response-details">응답별 상세</button></nav><div class="service-actions"><button id="import">데이터 열기</button><input id="data-file" type="file" accept=".json,application/json" hidden><button id="export" disabled>응답 CSV</button></div></div>
+<a class="skip-link" href="#main-content">본문으로 이동</a><header class="suite-header"><nav class="service-nav" aria-label="서비스"><a href="https://baejin.github.io/geo-prompt-studio/">프롬프트</a><a href="#view=responses" data-view="responses">응답 결과</a><a href="#view=analysis" data-view="analysis" aria-current="page">분석 결과</a></nav><span class="suite-brand">DATACAST</span></header>
+
 <main id="main-content" tabindex="-1">
   <section id="loading" role="status">데이터를 불러오는 중입니다.</section>
   <section id="empty" hidden><h1>응답 결과</h1><p id="load-message">BigQuery에서 내보낸 대시보드 데이터 파일을 여세요.</p><button id="open-data" class="primary">데이터 파일 열기</button></section>
   <section id="dashboard" hidden>
-    <div class="page-heading"><h1>응답 분석</h1><span id="snapshot" class="muted"></span></div>
+    <div class="page-heading"><h1 id="page-title">분석 결과</h1><div class="page-tools"><span id="snapshot" class="muted"></span><div class="service-actions"><button id="import">데이터 열기</button><input id="data-file" type="file" accept=".json,application/json" hidden><button id="export" disabled>응답 CSV</button></div></div></div>
     <section class="scope-panel" aria-label="조회 범위">
       <div class="scope-heading"><h2>조회 범위</h2><div class="counts" id="counts"></div></div>
       <div class="filters"><label class="query-field">프롬프트<input id="prompt-search" type="search" placeholder="ID 또는 질문 검색" aria-label="프롬프트 검색"></label><label>수집 모델<select id="provider"><option value="all">전체</option></select></label><label>분석 기준<select id="version"><option value="latest">고객사 DB 공식 결과</option></select></label></div>
       <details id="cohort-picker" class="cohort-picker"><summary>집계 대상 선택 <span id="selection-count" class="muted"></span></summary><div class="selection-toolbar"><button id="select-visible" class="small">현재 목록 선택</button><button id="deselect-visible" class="small">현재 목록 해제</button><button id="reset-selection" class="small">전체 초기화</button></div><div id="selection-list" class="selection-list"></div></details>
 
     </section>
-    <section class="overview" aria-labelledby="overview-title">
+    <section id="overview-view" class="overview" aria-labelledby="overview-title">
       <div class="overview-heading"><h2 id="overview-title" tabindex="-1">집계 결과</h2><div class="target-controls"><label>브랜드<select id="target-brand"></select></label><label>모델<select id="target-model"><option value="all">브랜드 전체</option></select></label></div></div>
       <p id="population-note" class="population-note muted" role="status"></p>
 
       <div class="overview-grid"><div><div id="funnel" class="funnel" aria-label="전체 응답 대비 비율"></div></div><div class="provider-summary"><h3>AI 서비스별 비교</h3><div class="table-scroll"><table class="summary-table"><thead><tr><th>서비스</th><th>응답</th><th>노출</th><th>긍정</th><th>추천</th><th>최우선</th></tr></thead><tbody id="provider-summary"></tbody></table></div></div></div>
 
     </section>
-    <div class="detail-heading" id="response-details" tabindex="-1"><h2>응답별 상세</h2><span id="drill-note" class="muted"></span><button id="clear-drill" class="small" hidden>전체 응답 보기</button></div>
+    <section id="details-view" aria-labelledby="detail-title">
+    <div class="detail-heading" id="response-details" tabindex="-1"><h2 id="detail-title">모델별 분석</h2><span id="drill-note" class="muted"></span><button id="clear-drill" class="small" hidden>전체 응답 보기</button></div>
     <div class="workspace">
       <aside class="prompt-panel" aria-label="프롬프트 목록"><div class="list-toolbar"><h3>프롬프트</h3><span id="prompt-count" class="muted"></span></div><div id="prompt-list" class="prompt-list"></div></aside>
       <section id="detail" class="detail" aria-label="프롬프트 상세">
@@ -40,6 +41,7 @@
         </div>
       </section><div id="no-prompt" class="blank" hidden>검색 결과가 없습니다.</div>
     </div>
+    </section>
   </section>
 </main><div id="toast" class="toast" role="status" hidden></div>
 </body></html>

@@ -174,7 +174,7 @@ export function targetKey(value){return String(value||'').normalize('NFKC').trim
 export function brandKey(value){const key=targetKey(value);return ['현대','현대자동차','hyundaimotor','hyundaimotors'].includes(key)?'hyundai':key;}
 export function responseSignals(response,version,brand='hyundai',model='all'){
   const a=selectAnalysis(response,version);
-  if(!a||a.schema_version!==3||(a.analysis_status&&a.analysis_status!=='SUCCEEDED'))return null;
+  if(!a||a.schema_version!==3)return null;
   const entities=a.entities.filter(e=>brandKey(e.brand)===brand&&(model==='all'||targetKey(e.model)===model));
   const assessments=entities.flatMap(e=>e.kbf_assessments||[]);
   const positiveCount=assessments.filter(k=>k.sentiment==='POSITIVE').length,negativeCount=assessments.filter(k=>k.sentiment==='NEGATIVE').length;
@@ -200,4 +200,4 @@ export function updateSelection(selected,responses,include){
   const next=new Set(selected);for(const r of responses)if(include)next.add(r.task_id);else next.delete(r.task_id);return next;
 }
 
-export function analysisStatusText(a){return !a?'분석 없음':({SUCCEEDED:'분석 완료',PARTIAL:'부분 결과 · 집계 제외',NOT_ANALYZED:'미분석 · 집계 제외',NOT_INCLUDED:'분석 대상 제외',PROCESSING:'분석 중 · 집계 제외',FAILED:'분석 실패 · 집계 제외',UNKNOWN:'상태 미확인 · 집계 제외'}[a.analysis_status]||'상태 미제공');}
+export function analysisStatusText(a){return !a?'분석 없음':({SUCCEEDED:'분석 완료',PARTIAL:'부분 결과',NOT_ANALYZED:'미분석',NOT_INCLUDED:'분석 대상 제외',PROCESSING:'분석 중',FAILED:'분석 실패',UNKNOWN:'상태 미확인'}[a.analysis_status]||'상태 미제공');}

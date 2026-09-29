@@ -1,24 +1,7 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>Prompt Studio</title><link rel="stylesheet" href="styles.css?v=066d3aa08f8a"><script type="module" src="app.mjs?v=4745c1581d33"></script></head>
-<body>
-<a class="skip-link" href="#main-content">본문으로 이동</a><header class="suite-header"><nav class="service-nav" aria-label="서비스"><a href="https://geo.datacast.kr/" aria-current="page">Prompt Studio</a><a href="https://geo.datacast.kr/responses/">Response Explorer</a></nav></header>
-<div class="service-toolbar"><nav class="app-nav" aria-label="Prompt Studio 작업"><div class="library-nav"><button id="templates-nav" class="active" aria-current="page">템플릿</button><button id="parameters-nav">파라미터</button></div><button id="compose-nav">프롬프트 생성</button></nav><div class="service-actions"><span id="save-state" class="save-state" title="설정은 현재 브라우저에 저장됩니다.">브라우저 저장</span><button id="load-config" class="quiet">설정 가져오기</button><button id="save-config" class="quiet">설정 내보내기</button><input id="config-file" type="file" accept=".json,application/json" hidden></div></div>
-<main id="main-content" tabindex="-1"><section id="library-view" aria-label="라이브러리">
-<section id="templates-view" aria-label="템플릿 관리"><div class="view-toolbar"><h1>템플릿 <span id="template-badge" class="badge"></span></h1><div class="toolbar-actions"><input id="template-search" type="search" aria-label="템플릿 검색" placeholder="템플릿 검색"><button id="add-template-set" class="primary">템플릿 추가</button></div></div><div class="table-scroll"><table class="library-table"><thead><tr><th scope="col">이름</th><th scope="col">질문</th><th scope="col" class="number-col">문장 수</th><th scope="col" class="actions-col">관리</th></tr></thead><tbody id="template-library"></tbody></table></div></section>
-<section id="parameters-view" aria-label="파라미터 관리" hidden><div class="view-toolbar"><h1>파라미터 <span id="parameter-badge" class="badge"></span></h1><div class="toolbar-actions"><input id="parameter-search" type="search" aria-label="파라미터 검색" placeholder="파라미터 검색"><button id="add-parameter-set" class="primary">파라미터 추가</button></div></div><div class="table-scroll"><table class="library-table"><thead><tr><th scope="col">이름</th><th scope="col">값</th><th scope="col" class="number-col">값 수</th><th scope="col" class="actions-col">관리</th></tr></thead><tbody id="parameter-library"></tbody></table></div></section>
-</section>
-<section id="compose-view" aria-label="프롬프트 생성" hidden>
-<div class="view-toolbar"><h1>프롬프트 생성</h1></div>
-<section class="compose-form panel" aria-label="템플릿과 파라미터 선택">
-  <div class="template-choice"><div><label class="field-label" for="template-picker">템플릿</label><select id="template-picker"></select></div><div id="template-text" class="template-text"></div></div>
-  <div id="parameter-choices" class="parameter-choices"></div>
-  <div class="compose-actions"><button id="generate" class="primary" disabled>생성</button></div>
-  <div id="errors" class="errors" role="alert" hidden></div>
-  <section id="generated-preview" class="generated-preview" aria-label="생성 결과" hidden><div class="generated-heading"><h2>생성 결과 <span id="generated-count" class="badge"></span></h2><span id="generated-summary" role="status"></span></div><ol id="generated-rows"></ol><button id="preview-more" class="quiet small" hidden>더 보기</button><div class="add-action"><button id="add-to-list" class="primary">목록에 추가</button></div></section>
-</section>
-<section class="prompt-list panel" aria-label="프롬프트 목록"><div class="panel-heading"><h2>프롬프트 목록 <span id="preview-count" class="badge">0</span></h2><button id="export" class="outline" disabled>CSV 다운로드</button></div><div class="result-tools"><input id="search" type="search" placeholder="목록 검색" aria-label="목록 검색"><div class="list-actions"><button id="select-all" class="quiet">전체 선택</button><button id="remove-selected" class="quiet" disabled>선택 삭제</button></div></div><div class="results-head"><span>선택</span><span>프롬프트</span></div><div id="results" class="results"></div><div class="pagination"><span id="selection-count">0개 선택</span><div><span id="page-info"></span><button id="previous" class="quiet" aria-label="이전 페이지">이전</button><button id="next" class="quiet" aria-label="다음 페이지">다음</button></div></div></section>
-</section></main>
-<footer class="site-footer"><div class="footer-inner"><img src="datacast-logo.png" width="186" height="48" alt="DATACAST"><div class="footer-info"><span>개발 · DATACAST</span><small>© 2026 DATACAST. All rights reserved.</small></div></div></footer>
-<dialog id="library-editor" class="library-editor" aria-labelledby="editor-title"><form id="library-form"><div class="modal-heading"><h2 id="editor-title"></h2><button type="button" id="close-editor" class="quiet close" aria-label="편집 닫기">×</button></div><label class="field-label" for="draft-name">이름</label><input id="draft-name" maxlength="200" required><p id="draft-help" class="hint"></p><div id="draft-items"></div><button id="add-draft-item" type="button" class="outline"></button><p id="draft-error" class="errors" role="alert" hidden></p><div class="dialog-actions"><button type="button" id="cancel-editor" class="outline">취소</button><button type="submit" class="primary">저장</button></div></form></dialog>
-<div id="toast" role="status" class="toast" hidden></div><dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title"></h2><p id="confirm-description"></p><div class="dialog-actions"><button id="cancel-confirm" class="outline">취소</button><button id="accept-confirm" class="primary">확인</button></div></dialog>
-</body></html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Prompt Studio</title><script>
+const target = new URL('./proto_v1_0/', location.href);
+target.search = location.search;
+target.hash = location.hash;
+location.replace(target.href);
+</script><noscript><meta http-equiv="refresh" content="0;url=./proto_v1_0/"></noscript></head><body><a href="./proto_v1_0/">Prompt Studio</a></body></html>

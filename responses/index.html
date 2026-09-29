@@ -1,59 +1,7 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Response Explorer · DATACAST</title><link rel="stylesheet" href="styles.css?v=e0278670e02e"><script type="module" src="app.mjs?v=729580fd9d67"></script></head>
-<body>
-<a class="skip-link" href="#main-content">본문으로 이동</a><header class="suite-header"><nav class="service-nav" aria-label="서비스"><a href="https://geo.datacast.kr/">Prompt Studio</a><a href="https://geo.datacast.kr/responses/" aria-current="page">Response Explorer</a></nav></header>
-<div class="service-toolbar"><nav class="explorer-nav" aria-label="Response Explorer 메뉴"><a href="#view=responses" data-view="responses" aria-current="page">프롬프트·응답</a><a href="#view=analysis" data-view="analysis">분석 결과</a></nav></div>
-
-<main id="main-content" tabindex="-1">
-  <section id="loading" role="status">데이터를 불러오는 중입니다.</section>
-  <section id="empty" hidden><h1>응답 결과</h1><p id="load-message">BigQuery에서 내보낸 대시보드 데이터 파일을 여세요.</p><button id="open-data" class="primary">데이터 파일 열기</button></section>
-  <section id="dashboard" hidden>
-    <div class="page-heading"><h1 id="page-title">프롬프트·응답</h1><div class="page-tools"><span id="snapshot" class="muted"></span><div class="service-actions"><button id="import">데이터 열기</button><input id="data-file" type="file" accept=".json,application/json" hidden><button id="export" disabled>응답 CSV</button></div></div></div>
-    <section class="scope-panel" aria-label="조회 범위">
-      <div class="scope-heading"><h2>조회 범위</h2><div class="counts" id="counts"></div></div>
-      <div class="filter-groups">
-        <fieldset class="filter-group prompt-filters"><legend>프롬프트 필터</legend><div class="filter-fields"><label class="query-field">키워드<input id="prompt-search" type="search" placeholder="제목, ID, 원문 검색" aria-label="프롬프트 검색"></label><div class="multi-field"><span id="prompt-template-label">템플릿 이름</span><details id="prompt-template" class="multi-filter" data-filter="prompt-template"><summary aria-labelledby="prompt-template-label prompt-template-filter-summary"><span id="prompt-template-filter-summary">전체</span></summary><div class="multi-options" role="group" aria-labelledby="prompt-template-label"></div></details></div><div class="multi-field"><span id="prompt-param-label">파라미터 값</span><details id="prompt-param" class="multi-filter" data-filter="prompt-param"><summary aria-labelledby="prompt-param-label prompt-param-filter-summary"><span id="prompt-param-filter-summary">전체</span></summary><div class="multi-options" role="group" aria-labelledby="prompt-param-label"></div></details></div></div></fieldset>
-        <fieldset class="filter-group response-filters"><legend>응답 필터</legend><div class="filter-fields"><div class="multi-field"><span id="provider-label">서비스</span><details id="provider" class="multi-filter" data-filter="provider"><summary aria-labelledby="provider-label provider-filter-summary"><span id="provider-filter-summary">전체</span></summary><div class="multi-options" role="group" aria-labelledby="provider-label"></div></details></div><div class="multi-field"><span id="collection-model-label">모델</span><details id="collection-model" class="multi-filter" data-filter="collection-model"><summary aria-labelledby="collection-model-label collection-model-filter-summary"><span id="collection-model-filter-summary">전체</span></summary><div class="multi-options" role="group" aria-labelledby="collection-model-label"></div></details></div></div></fieldset>
-      </div>
-      <label class="version-filter" hidden>분석 기준<select id="version"><option value="latest">고객사 DB 공식 결과</option></select></label>
-    </section>
-    <section id="browse-view" class="response-browser" aria-label="프롬프트·응답 목록">
-      <div class="browse-toolbar"><div><h2>프롬프트·응답 <span id="browse-count" class="muted"></span></h2></div><label class="check"><input id="selected-only" type="checkbox">선택한 응답만</label></div>
-      <div class="selection-toolbar"><button id="select-visible" class="small">전체 선택</button><button id="deselect-visible" class="small">전체 해제</button><button id="expand-groups" class="small">모두 펼치기</button><span id="selected-summary" class="muted" role="status"></span><button id="show-analysis" class="primary" disabled>분석 결과 보기</button></div>
-      <div id="selection-list" class="browse-list"></div>
-      <div class="browse-pagination"><span id="browse-page" class="muted"></span><div><button id="browse-previous" class="small">이전</button><button id="browse-next" class="small">다음</button></div></div>
-    </section>
-    <section id="analysis-selection" class="analysis-selection" hidden><span id="analysis-selection-count"></span><button id="change-selection">선택 변경</button></section>
-    <section id="analysis-empty" class="analysis-empty" hidden><h2>분석할 응답을 선택하세요.</h2><button id="choose-responses" class="primary">프롬프트·응답 목록</button></section>
-    <section id="overview-view" class="overview" aria-labelledby="overview-title">
-      <div class="overview-heading"><h2 id="overview-title" tabindex="-1">집계 결과</h2><div class="target-controls"><label>브랜드<select id="target-brand"></select></label><label>모델<select id="target-model"><option value="all">브랜드 전체</option></select></label></div></div>
-      <p id="population-note" class="population-note muted" role="status"></p>
-
-      <div class="overview-grid"><div><div id="funnel" class="funnel" aria-label="전체 응답 대비 비율"></div></div><div class="provider-filter-summary"><h3>AI 서비스별 비교</h3><div class="table-scroll"><table class="summary-table"><thead><tr><th>서비스</th><th>응답</th><th>노출</th><th>긍정</th><th>추천</th><th>최우선</th></tr></thead><tbody id="provider-summary"></tbody></table></div></div></div>
-
-    </section>
-    <section id="details-view" aria-labelledby="detail-title">
-    <div class="detail-heading" id="response-details" tabindex="-1"><h2 id="detail-title">모델별 분석</h2><span id="drill-note" class="muted"></span><button id="clear-drill" class="small" hidden>전체 응답 보기</button></div>
-    <div class="workspace">
-      <aside class="prompt-panel" aria-label="프롬프트 목록"><div class="list-toolbar"><h3>프롬프트</h3><span id="prompt-count" class="muted"></span></div><div id="prompt-list" class="prompt-list"></div></aside>
-      <section id="detail" class="detail" aria-label="프롬프트 상세">
-        <div class="prompt-heading"><div><code id="prompt-id"></code><h2 id="prompt-text"></h2></div><button id="open-current-source" class="small">원문 보기</button></div>
-        <div id="response-tabs" class="response-tabs" aria-label="응답 모델"></div>
-        <div id="response-meta" class="response-meta"></div>
-        <div class="detail-grid">
-          <section class="panel analysis-panel" aria-label="분석 결과"><div class="panel-heading"><h3>분석 결과</h3><button id="analysis-export" class="small" disabled>JSON</button></div>
-            <div class="analysis-picker"><label for="analysis-picker">저장 이력</label><select id="analysis-picker"></select></div>
-            <div id="no-analysis" class="blank" hidden>분석 결과가 없습니다.</div>
-            <div id="analysis-content"><div class="entity-tools"><input id="entity-search" type="search" aria-label="브랜드·모델 검색" placeholder="브랜드·모델 검색"><label class="check"><input id="recommended" type="checkbox">추천만</label><label id="top-only-wrap" class="check" hidden><input id="top-only" type="checkbox">최우선만</label></div><div class="entity-order"><label for="entity-sort">모델 정렬</label><select id="entity-sort"><option value="default" selected>기본: 최우선 → 추천 → 브랜드명</option><option value="top">최우선 추천순</option><option value="recommended">추천순</option><option value="brand">브랜드명순</option><option value="model-asc">모델명 오름차순</option><option value="model-desc">모델명 내림차순</option><option value="original">원래 순서</option></select></div><div id="entity-summary" class="muted entity-summary"></div><div class="entity-scroll"><table class="entity-table"><thead><tr><th>브랜드 · 모델</th><th>추천</th><th id="priority-heading">최우선 여부</th><th title="긍정 ÷ (긍정 + 부정) × 100% · 중립 제외">긍부정 점수</th><th>KBF</th></tr></thead><tbody id="entities"></tbody></table></div>
-              <section id="entity-detail" class="entity-detail" aria-label="개체 분석 상세"><h4 id="entity-title"></h4><div id="recommendation"></div><div id="sentiment-score" class="muted" title="긍정 ÷ (긍정 + 부정) × 100% · 모델의 전체 KBF 평가 기준"></div><div id="entity-identity"></div><div class="assessment-filters"><select id="category" aria-label="KBF 분류"><option value="all">모든 KBF</option></select><select id="sentiment" aria-label="감성"><option value="all">모든 감성</option><option value="POSITIVE">긍정</option><option value="NEUTRAL">중립</option><option value="NEGATIVE">부정</option></select></div><div id="assessments"></div></section>
-            </div>
-          </section>
-        </div>
-      </section><div id="no-prompt" class="blank" hidden>검색 결과가 없습니다.</div>
-    </div>
-    </section>
-  </section>
-</main>
-<dialog id="source-dialog" class="source-drawer" aria-labelledby="source-title"><div class="drawer-heading"><div><span id="source-kind" class="muted"></span><h2 id="source-title"></h2></div><button id="close-source" aria-label="원문 닫기">×</button></div><div class="drawer-content"><section class="raw-prompt"><h3>프롬프트 원문</h3><p id="raw-prompt-text"></p><code id="raw-prompt-id"></code></section><section id="raw-response" aria-label="응답 원문"><div class="panel-heading"><h3>응답 원문</h3><button id="clear-evidence" class="small" hidden>강조 해제</button></div><div id="raw-response-meta" class="muted"></div><div id="source-text" class="source-text" tabindex="0"></div><details id="reasoning-wrap" class="reasoning" hidden><summary>추론 요약</summary><div id="reasoning-text"></div></details><details class="raw-identity"><summary>응답 ID</summary><code id="raw-response-id"></code></details></section></div></dialog>
-<footer class="site-footer"><div class="footer-inner"><img src="datacast-logo.png" width="186" height="48" alt="DATACAST"><div class="footer-info"><span>개발 · DATACAST</span><small>© 2026 DATACAST. All rights reserved.</small></div></div></footer><div id="toast" class="toast" role="status" hidden></div>
-</body></html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Response Explorer</title><script>
+const target = new URL('../proto_v1_0/responses/', location.href);
+target.search = location.search;
+target.hash = location.hash;
+location.replace(target.href);
+</script><noscript><meta http-equiv="refresh" content="0;url=../proto_v1_0/responses/"></noscript></head><body><a href="../proto_v1_0/responses/">Response Explorer</a></body></html>

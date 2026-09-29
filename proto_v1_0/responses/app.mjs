@@ -1,9 +1,10 @@
-import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText,sortEntities,latestSchemaData,brandKey,targetKey,aggregateResponses,deploymentLabel,selectionState,updateSelection,sentimentScore,promptPresentation,responseScope,promptFilterOptions,withPromptMetadata} from './model.mjs?v=ffbd9fc9eaad';
+import {validateData,availableAnalyses,selectAnalysis,entitiesOf,groupPrompts,coverage,csv,escapeHTML as esc,highlighted,isReferenceVersion,analysisLabel,recommendationEvidence,priorityText,sortEntities,latestSchemaData,brandKey,targetKey,aggregateResponses,aggregateKbf,kbfFrequencyMax,sentimentColor,deploymentLabel,selectionState,updateSelection,sentimentScore,promptPresentation,responseScope,promptFilterOptions,withPromptMetadata} from './model.mjs?v=c3bc60db25a2';
 const $=id=>document.getElementById(id), providerName={OPENAI:'OpenAI',GOOGLE:'Google',ANTHROPIC:'Anthropic'},sentiments={POSITIVE:'긍정',NEUTRAL:'중립',NEGATIVE:'부정'};
 let data,groups=[],promptId='',responseId='',analysisId='',entityKey='',currentResponse,currentAnalysis,currentEntities=[],evidence='',timer;
 let activeView='responses',browsePage=0,expandedPrompts=new Set(),sourceResponse=null;
 const SELECTION_STORAGE='datacast-response-explorer-selection-v1';
 let drill='',population=[],selectedResponses=new Set(),selectionCandidates=[];
+let comparing=false,drillSide='target';
 const filterIds=['prompt-template','prompt-param','provider','collection-model'];
 const filterChoices=Object.fromEntries(filterIds.map(id=>[id,new Set()]));
 const filterOptions={};
@@ -16,7 +17,7 @@ function categoryName(id){if(!id)return '미분류';const c=data.categories.find
 function version(){return $('version').value;}
 function setData(value){
   if(value.source_kind!=='customer_export'||value.source!=='hyundai-global-search.global_geo')throw Error('고객사 DB에서 갱신한 데이터 파일을 사용하세요.');
-  data=withPromptMetadata(validateData(latestSchemaData(value)));drill='';selectedResponses=new Set();browsePage=0;expandedPrompts=new Set();
+  data=withPromptMetadata(validateData(latestSchemaData(value)));drill='';comparing=false;drillSide='target';selectedResponses=new Set();browsePage=0;expandedPrompts=new Set();
   try{const saved=JSON.parse(localStorage.getItem(SELECTION_STORAGE)||'null');if(saved?.source===data.source&&saved?.version===data.export_info?.export_version&&Array.isArray(saved.ids))selectedResponses=new Set(saved.ids.filter(id=>data.responses.some(r=>r.task_id===id)));}catch{}
   $('loading').hidden=true;$('empty').hidden=true;$('dashboard').hidden=false;$('export').disabled=false;
   $('snapshot').textContent=`${date(data.exported_at)} KST`;
@@ -30,7 +31,12 @@ function setData(value){
   $('version').value=data.versions[0]?.id||'latest';$('version').closest('label').hidden=data.versions.length<2;
   const brands=new Map();for(const r of data.responses)for(const a of [...r.analyses,...r.references.map(x=>({entities:x.expected_output?.entities||[]}))])for(const e of a.entities)if(e.brand)brands.set(brandKey(e.brand),e.brand);
   if(!brands.has('hyundai'))brands.set('hyundai','Hyundai');
-  $('target-brand').innerHTML=[...brands].sort((a,b)=>a[1].localeCompare(b[1])).map(([key,name])=>`<option value="${esc(key)}">${esc(name)}</option>`).join('');$('target-brand').value='hyundai';updateTargetModels();
+  const brandOptions=[...brands].sort((a,b)=>a[1].localeCompare(b[1])).map(([key,name])=>`<option value="${esc(key)}">${esc(name)}</option>`).join('');
+  for(const side of ['target','compare']){
+    $(side+'-brand').innerHTML=brandOptions;
+    $(side+'-brand').value=side==='target'?'hyundai':brands.has('toyota')?'toyota':'hyundai';
+    updateTargetModels(side);
+  }
   const hash=new URLSearchParams(location.hash.slice(1));promptId=hash.get('prompt')||'';responseId=hash.get('response')||'';analysisId='';entityKey='';activeView=hash.get('view')==='analysis'?'analysis':'responses';if(promptId)expandedPrompts.add(promptId);setView(activeView);
 }
 function saveSelection(){
@@ -73,12 +79,14 @@ function render(){
   const {candidates,selected:included}=selectedScope();
   selectionCandidates=candidates;renderSelection();
   const aggregate=aggregateResponses(included,version(),$('target-brand').value,$('target-model').value);
-  population=aggregate.rows.map(row=>row.response);renderOverview(aggregate);
-  groups=groupPrompts(drill?aggregate.rows.filter(row=>row.signals[drill]===true).map(row=>row.response):included);
+  const comparison=comparing?aggregateResponses(included,version(),$('compare-brand').value,$('compare-model').value):null;
+  population=aggregate.rows.map(row=>row.response);renderOverview(aggregate,comparison);
+  const detailAggregate=drillSide==='compare'&&comparison?comparison:aggregate;
+  groups=groupPrompts(drill?detailAggregate.rows.filter(row=>row.signals[drill]===true).map(row=>row.response):included);
   if(!groups.some(g=>g.id===promptId)){promptId=groups[0]?.id||'';responseId='';analysisId='';}
   const visible=groups.flatMap(g=>g.responses);
   $('counts').innerHTML=`<span>프롬프트<strong>${groupPrompts(candidates).length}</strong></span><span>응답<strong>${candidates.length}</strong></span><span>선택<strong>${included.length}</strong></span>`;
-  $('drill-note').textContent=drill?`${metricNames[drill]} 해당 ${visible.length}건`:`선택 응답 ${visible.length}건`;$('clear-drill').hidden=!drill;
+  $('drill-note').textContent=drill?`${targetLabel(drillSide)} · ${metricNames[drill]} ${visible.length}건`:`선택 응답 ${visible.length}건`;$('clear-drill').hidden=!drill;
   $('prompt-count').textContent=groups.length+'개';
   $('prompt-list').innerHTML=groups.map(g=>`<button class="prompt-item ${g.id===promptId?'active':''}" data-prompt="${esc(g.id)}" ${g.id===promptId?'aria-current="true"':''}><span>${esc(promptPresentation(g.text).title)}</span><small>응답 ${g.responses.length} · ${esc(g.id)}</small></button>`).join('')||'<div class="blank">해당 응답 없음</div>';
   $('detail').hidden=!groups.length;$('no-prompt').hidden=!!groups.length;$('export').disabled=!included.length;
@@ -111,17 +119,39 @@ function renderSelection(){
   $('browse-page').textContent=promptGroups.length?`${browsePage*20+1}–${Math.min((browsePage+1)*20,promptGroups.length)} / ${promptGroups.length}개 프롬프트`:'0개';
   $('browse-previous').disabled=!browsePage;$('browse-next').disabled=(browsePage+1)*20>=promptGroups.length;
 }
-function updateTargetModels(){
-  const models=new Map();for(const r of data.responses)for(const a of [selectAnalysis(r,version())].filter(Boolean))for(const e of a.entities)if(brandKey(e.brand)===$('target-brand').value&&e.model&&targetKey(e.model)!=='null')models.set(targetKey(e.model),e.model);
-  $('target-model').innerHTML='<option value="all">브랜드 전체</option>'+[...models].sort((a,b)=>a[1].localeCompare(b[1],'ko',{numeric:true})).map(([key,name])=>`<option value="${esc(key)}">${esc(name)}</option>`).join('');
+function updateTargetModels(side='target'){
+  const models=new Map();for(const r of data.responses)for(const a of [selectAnalysis(r,version())].filter(Boolean))for(const e of a.entities)if(brandKey(e.brand)===$(side+'-brand').value&&e.model&&targetKey(e.model)!=='null')models.set(targetKey(e.model),e.model);
+  $(side+'-model').innerHTML='<option value="all">브랜드 전체</option>'+[...models].sort((a,b)=>a[1].localeCompare(b[1],'ko',{numeric:true})).map(([key,name])=>`<option value="${esc(key)}">${esc(name)}</option>`).join('');
 }
-function renderOverview(result){
+function targetLabel(side){return [$(side+'-brand'),$(side+'-model')].map(select=>select.selectedOptions[0]?.textContent||'').join(' · ');}
+const overviewId=(side,id)=>side==='compare'?'compare-'+id:id;
+function renderOverview(result,comparison){
   $('population-note').textContent=`집계 응답 ${result.total}건`;
-  $('funnel').innerHTML=result.metrics.map(m=>`<button class="funnel-row ${drill===m.key?'selected':''}" data-metric="${m.key}" aria-pressed="${drill===m.key}"><span>${metricNames[m.key]}</span><meter min="0" max="${result.total||1}" value="${m.count}" aria-label="${metricNames[m.key]} 비율">${percent(m.count,result.total)}</meter><strong>${percent(m.count,result.total)}</strong><small>${m.count} / ${result.total}${m.unknown?' · 미판정 '+m.unknown:''}</small></button>`).join('');
-  $('provider-summary').innerHTML=[...new Set(population.map(r=>r.provider))].sort().map(p=>{
-    const a=aggregateResponses(population.filter(r=>r.provider===p),version(),$('target-brand').value,$('target-model').value);
-    return `<tr><th scope="row">${esc(providerName[p]||p)}</th><td>${a.total}</td>${a.metrics.map(m=>`<td title="${m.count}/${a.total}${m.unknown?' · 미판정 '+m.unknown:''}">${percent(m.count,a.total)}</td>`).join('')}</tr>`;
-  }).join('')||'<tr><td colspan="6" class="blank">집계할 응답이 없습니다.</td></tr>';
+  $('overview-panels').classList.toggle('is-comparing',comparing);$('compare-pane').hidden=!comparing;
+  $('toggle-comparison').textContent=comparing?'비교 닫기':'+ 비교 추가';$('toggle-comparison').setAttribute('aria-expanded',String(comparing));
+  const sides=comparing?['target','compare']:['target'];
+  const charts=sides.map(side=>aggregateKbf(population,version(),$(side+'-brand').value,$(side+'-model').value,data.categories));
+  const scale=kbfFrequencyMax(charts);
+  for(const [i,side] of sides.entries()){
+    const summary=side==='target'?result:comparison;
+    $(overviewId(side,'funnel')).innerHTML=summary.metrics.map(m=>{
+      const active=drill===m.key&&drillSide===side;
+      return `<button class="funnel-row ${active?'selected':''}" data-metric="${m.key}" aria-pressed="${active}"><span>${metricNames[m.key]}</span><meter min="0" max="${summary.total||1}" value="${m.count}" aria-label="${metricNames[m.key]} 비율">${percent(m.count,summary.total)}</meter><strong>${percent(m.count,summary.total)}</strong><small>${m.count} / ${summary.total}${m.unknown?' · 미판정 '+m.unknown:''}</small></button>`;
+    }).join('');
+    renderKbf(side,charts[i],scale);
+    $(overviewId(side,'provider-summary')).innerHTML=[...new Set(population.map(r=>r.provider))].sort().map(p=>{
+      const a=aggregateResponses(population.filter(r=>r.provider===p),version(),$(side+'-brand').value,$(side+'-model').value);
+      return `<tr><th scope="row">${esc(providerName[p]||p)}</th><td>${a.total}</td>${a.metrics.map(m=>`<td title="${m.count}/${a.total}${m.unknown?' · 미판정 '+m.unknown:''}">${percent(m.count,a.total)}</td>`).join('')}</tr>`;
+    }).join('')||'<tr><td colspan="6" class="blank">집계할 응답이 없습니다.</td></tr>';
+  }
+}
+function renderKbf(side,chart,scale){
+  $(overviewId(side,'kbf-total')).textContent=chart.total.toLocaleString('ko-KR')+'회 언급';
+  $(overviewId(side,'kbf-chart')).innerHTML=chart.rows.length?`<table class="kbf-table"><caption class="visually-hidden">${esc(targetLabel(side))} KBF 언급 빈도 내림차순 · 막대 최대 ${scale}회</caption><colgroup><col class="kbf-label-col"><col><col class="kbf-count-col"><col class="kbf-score-col"></colgroup><thead><tr><th scope="col">KBF</th><th scope="col" colspan="2" title="선택한 응답의 KBF 언급 건수 · 중립 포함 · 막대 최대 ${scale}회">언급 수</th><th scope="col" title="긍정 ÷ (긍정 + 부정) × 100%">긍부정</th></tr></thead><tbody>${chart.rows.map(row=>{
+    const score=row.score===null?'—':row.score.toFixed(1)+'%';
+    const hint=`${row.name}: ${row.count}회 · 긍정 ${row.positive} · 부정 ${row.negative} · 중립 ${row.neutral} · ${row.score===null?'긍정·부정 없음':score}`;
+    return `<tr title="${esc(hint)}"><th scope="row">${esc(row.name)}</th><td class="kbf-bar-cell"><svg class="kbf-track" aria-hidden="true" focusable="false"><rect class="kbf-rail" width="100%" height="100%" rx="2"></rect><rect class="kbf-bar ${row.score===null?'unscored':''}" width="${row.count/scale*100}%" height="100%" rx="2" fill="${sentimentColor(row.score)}"></rect></svg></td><td class="kbf-count">${row.count.toLocaleString('ko-KR')}</td><td class="kbf-score">${score}</td></tr>`;
+  }).join('')}</tbody></table>`:'<div class="blank kbf-empty">KBF 언급이 없습니다.</div>';
 }
 function renderPrompt(){
   const g=groups.find(g=>g.id===promptId);
@@ -164,7 +194,8 @@ function renderAnalysis(){
   const a=currentAnalysis;
   $('analysis-export').disabled=!a;$('no-analysis').hidden=!!a;$('analysis-content').hidden=!a;
   currentEntities=entitiesOf(a);entityKey='';$('entity-search').value='';$('recommended').checked=false;$('top-only').checked=false;$('top-only-wrap').hidden=a?.schema_version!==3;$('category').value='all';$('sentiment').value='all';
-  entityKey=currentEntities.find(e=>brandKey(e.brand)===$('target-brand').value&&($('target-model').value==='all'||targetKey(e.model)===$('target-model').value)&&(!drill||drill==='exposure'||(drill==='positive'?e.kbf_assessments.some(k=>k.sentiment==='POSITIVE'):e[drill==='top'?'is_top_recommended':'is_recommended']===true)))?.key||'';
+  const side=drill&&comparing?drillSide:'target';
+  entityKey=currentEntities.find(e=>brandKey(e.brand)===$(side+'-brand').value&&($(side+'-model').value==='all'||targetKey(e.model)===$(side+'-model').value)&&(!drill||drill==='exposure'||(drill==='positive'?e.kbf_assessments.some(k=>k.sentiment==='POSITIVE'):e[drill==='top'?'is_top_recommended':'is_recommended']===true)))?.key||'';
   if(a)renderEntities();
 }
 function renderEntities(){
@@ -264,10 +295,13 @@ for(const id of filterIds){
   widget.addEventListener('keydown',e=>{if(e.key==='Escape'){widget.open=false;summary.focus();e.preventDefault();}});
 }
 document.addEventListener('click',e=>{for(const id of filterIds)if(!$(id).contains(e.target))$(id).open=false;});
-$('version').onchange=()=>{analysisId='';drill='';updateTargetModels();render();};
+$('version').onchange=()=>{analysisId='';drill='';for(const side of ['target','compare'])updateTargetModels(side);render();};
 $('prompt-search').oninput=()=>{browsePage=0;drill='';render();};
-$('target-brand').onchange=()=>{updateTargetModels();drill='';render();};$('target-model').onchange=()=>{drill='';render();};
-$('funnel').onclick=e=>{const b=e.target.closest('[data-metric]');if(b){drill=drill===b.dataset.metric?'':b.dataset.metric;render();$('response-details').scrollIntoView({block:'start'});$('response-details').focus({preventScroll:true});}};
+for(const side of ['target','compare']){
+  $(side+'-brand').onchange=()=>{updateTargetModels(side);drill='';render();};$(side+'-model').onchange=()=>{drill='';render();};
+  $(overviewId(side,'funnel')).onclick=e=>{const b=e.target.closest('[data-metric]');if(b){drill=drill===b.dataset.metric&&drillSide===side?'':b.dataset.metric;drillSide=side;render();$('response-details').scrollIntoView({block:'start'});$('response-details').focus({preventScroll:true});}};
+}
+$('toggle-comparison').onclick=()=>{comparing=!comparing;drill='';drillSide='target';render();if(comparing)$('compare-brand').focus({preventScroll:true});};
 $('clear-drill').onclick=()=>{drill='';render();};
 $('selection-list').onchange=e=>{
   const box=e.target;if(box.dataset.responseSelect)selectedResponses=updateSelection(selectedResponses,selectionCandidates.filter(r=>r.task_id===box.dataset.responseSelect),box.checked);

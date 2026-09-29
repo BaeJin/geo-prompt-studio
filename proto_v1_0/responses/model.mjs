@@ -172,10 +172,13 @@ export function latestSchemaData(input){
 }
 export function targetKey(value){return String(value||'').normalize('NFKC').trim().toLocaleLowerCase().replace(/[\s_-]+/g,'');}
 export function brandKey(value){const key=targetKey(value);return ['현대','현대자동차','hyundaimotor','hyundaimotors'].includes(key)?'hyundai':key;}
+function targetEntities(analysis,brand,model){
+  return analysis.entities.filter(e=>brandKey(e.brand)===brand&&(model==='all'||targetKey(e.model)===model));
+}
 export function responseSignals(response,version,brand='hyundai',model='all'){
   const a=selectAnalysis(response,version);
   if(!a||a.schema_version!==3)return null;
-  const entities=a.entities.filter(e=>brandKey(e.brand)===brand&&(model==='all'||targetKey(e.model)===model));
+  const entities=targetEntities(a,brand,model);
   const assessments=entities.flatMap(e=>e.kbf_assessments||[]);
   const positiveCount=assessments.filter(k=>k.sentiment==='POSITIVE').length,negativeCount=assessments.filter(k=>k.sentiment==='NEGATIVE').length;
   const bool=field=>entities.some(e=>e[field]===true)?true:entities.some(e=>typeof e[field]!=='boolean')?null:false;
@@ -186,6 +189,33 @@ export function aggregateResponses(responses,version,brand='hyundai',model='all'
   const rows=unique.map(response=>({response,signals:responseSignals(response,version,brand,model)})).filter(r=>r.signals);
   const metrics=['exposure','positive','recommended','top'].map(key=>({key,count:rows.filter(r=>r.signals[key]===true).length,unknown:rows.filter(r=>r.signals[key]===null).length}));
   return {rows,total:rows.length,excluded:unique.length-rows.length,mixed:rows.filter(r=>r.signals.mixed).length,metrics};
+}
+// One stored KBF assessment is one mention; neutral mentions affect frequency only.
+export function aggregateKbf(responses,version,brand='hyundai',model='all',categories=[]){
+  const groups=new Map(),categoryKey=(set,id)=>JSON.stringify([set||'',id||'']);
+  const names=new Map(categories.map(c=>[categoryKey(c.category_set_id,c.rfp_id??c.category_id),c.rfp_name||c.category_name]));
+  for(const response of new Map(responses.map(r=>[r.task_id,r])).values()){
+    const a=selectAnalysis(response,version);
+    if(!a||a.schema_version!==3)continue;
+    for(const e of targetEntities(a,brand,model))for(const k of e.kbf_assessments||[]){
+      const key=categoryKey(a.category_set_id,k.category_id);
+      if(!groups.has(key))groups.set(key,{key,category_id:k.category_id||null,category_set_id:a.category_set_id||null,name:names.get(key)||k.category_id||'미분류',count:0,positive:0,negative:0,neutral:0});
+      const row=groups.get(key);row.count++;
+      if(k.sentiment==='POSITIVE')row.positive++;
+      if(k.sentiment==='NEGATIVE')row.negative++;
+      if(k.sentiment==='NEUTRAL')row.neutral++;
+    }
+  }
+  const rows=[...groups.values()].map(r=>({...r,score:r.positive+r.negative?100*r.positive/(r.positive+r.negative):null}));
+  rows.sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,'ko')||a.key.localeCompare(b.key));
+  return {rows,total:rows.reduce((sum,r)=>sum+r.count,0)};
+}
+export function kbfFrequencyMax(charts){return Math.max(1,...charts.flatMap(chart=>chart.rows.map(r=>r.count)));}
+export function sentimentColor(score){
+  const red=[207,75,72],gray=[154,163,175],blue=[40,100,198];
+  if(score===null||!Number.isFinite(score))return '#9aa3af';
+  const value=Math.max(0,Math.min(100,score)),from=value<=50?red:gray,to=value<=50?gray:blue,t=value<=50?value/50:(value-50)/50;
+  return '#'+from.map((v,i)=>Math.round(v+(to[i]-v)*t).toString(16).padStart(2,'0')).join('');
 }
 export function deploymentLabel(data,id){
   if(!id||!data.production)return '';

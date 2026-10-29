@@ -1,3 +1,4 @@
+import {objectValues, choicesFor, generateObjects} from './object-values.mjs';
 export const LIMIT = 10000;
 export const keyOf = value => value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-US');
 export const valuesOf = text => [...new Set(text.split(/\r?\n/).map(v => v.trim()).filter(Boolean))];
@@ -192,7 +193,7 @@ export function migrateParameters(value) {
 
 export function validateParameters(s){
   if(!s||s.version!==3||!s.library||!Array.isArray(s.library.parameters)||!Array.isArray(s.library.templateSets)||!Array.isArray(s.combinations)||typeof s.dedupe!=='boolean'||s.library.parameters.length>1500||s.combinations.length>2500)throw Error('독립 파라미터 설정 형식을 확인하세요.');
-  const parameter=p=>{if(!p||typeof p.id!=='string'||!p.id||p.id.length>200||typeof p.name!=='string'||p.name.length>200||typeof p.values!=='string'||p.values.length>50000)throw Error('파라미터 이름·값을 확인하세요.');};
+  const parameter=p=>{if(!p||typeof p.id!=='string'||!p.id||p.id.length>200||typeof p.name!=='string'||p.name.length>200)throw Error('파라미터 이름·값을 확인하세요.');if(typeof p.values==='string'){if(p.values.length>50000)throw Error('파라미터 값이 너무 깁니다.');}else objectValues(p.values);};
   const ids=new Set();for(const p of s.library.parameters){parameter(p);if(ids.has(p.id))throw Error('파라미터 ID가 중복됩니다.');ids.add(p.id);}
   validateConfig({version:1,parameterSets:[],templateSets:s.library.templateSets.map(t=>({...t,enabled:true,parameterSetIds:[],templates:t.templates.map(v=>({...v,enabled:true}))}))});
   const combos=new Set();
@@ -215,13 +216,19 @@ export function bindParameter(s,combinationId,slot,parameterId){
   const c=s.combinations.find(c=>c.id===combinationId),p=s.library.parameters.find(p=>p.id===parameterId);
   if(!c||!requiredSlots(c.templateSet).includes(keyOf(slot)))throw Error('템플릿의 빈칸을 확인하세요.');
   if(!p)throw Error('연결할 파라미터를 선택하세요.');
-  c.bindings=c.bindings.filter(b=>keyOf(b.slot)!==keyOf(slot));c.bindings.push({slot:keyOf(slot),parameter:structuredClone(p)});
+  const fields=Object.keys(choicesFor(p.values)[0]);
+  const targets=fields.length>1 ? fields.map(field=>({slot:keyOf(field),field})) : [{slot:keyOf(slot),field:fields[0]}];
+  if(fields.length>1 && (!targets.some(b=>b.slot===keyOf(slot)) || targets.some(b=>!requiredSlots(c.templateSet).includes(b.slot))))throw Error('조합 파라미터의 모든 필드가 템플릿 변수와 일치해야 합니다.');
+  const replaced=new Set(c.bindings.filter(b=>targets.some(t=>t.slot===keyOf(b.slot))).map(b=>Object.keys(choicesFor(b.parameter.values)[0]).length>1?b.parameter.id:null).filter(Boolean));
+  c.bindings=c.bindings.filter(b=>!targets.some(t=>t.slot===keyOf(b.slot))&&!replaced.has(b.parameter.id));
+  c.bindings.push(...targets.map(b=>({...b,parameter:structuredClone(p)})));
 }
 
 export function generateIndependent(s){
   validateParameters(s);
   const active=s.combinations.filter(c=>c.enabled);
   if(!active.length)return {rows:[],errors:['라이브러리에서 템플릿을 불러오세요.'],total:0,duplicates:0};
+  if(active.some(c=>c.bindings.some(b=>Array.isArray(b.parameter.values))))return generateObjects(s,keyOf,slots,LIMIT);
   // Plan each old-compatible group, enforcing a global total before retaining output.
   const results=[];let total=0;const errors=[];
   for(const [i,c] of active.entries()){

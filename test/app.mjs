@@ -1,4 +1,6 @@
-import {toCSV,valuesOf,migrateParameters as migrateStudio,loadIndependentTemplate as loadTemplate,bindParameter,requiredSlots,generateIndependent,appendPromptList,restoreWorkspace} from './engine.mjs?v=4a7f25ce68be';
+import {additions} from './library-oct26.mjs';
+import {objectValues, valueLabels} from './object-values.mjs';
+import {toCSV,valuesOf,migrateParameters as migrateStudio,loadIndependentTemplate as loadTemplate,bindParameter,requiredSlots,generateIndependent,appendPromptList,restoreWorkspace} from './engine.mjs?v=objects-20261029';
 import {sample} from './sample.mjs';
 const $=id=>document.getElementById(id), uid=()=>crypto.randomUUID();
 const esc=text=>String(text??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -7,6 +9,14 @@ let state=migrateStudio(sample()), rows=[],selected=new Set(),page=0,pendingRows
 state.combinations=[];
 try{const saved=localStorage.getItem(STORAGE)||localStorage.getItem('datacast-prompt-studio-v3')||localStorage.getItem('datacast-prompt-studio-v2')||localStorage.getItem(LEGACY);if(saved)state=migrateStudio(JSON.parse(saved));const workspace=restoreWorkspace(state);composer=workspace.composer;rows=workspace.rows;selected=new Set(rows.map(r=>r.number));}
 catch{setTimeout(()=>toast('저장된 설정을 읽지 못했습니다. 원본은 그대로 두고 샘플 라이브러리를 열었습니다.'),100);}
+// Add approved master data without replacing personal edits or accumulated rows.
+if(!state.appliedLibraryUpdates?.includes('oct26')){
+  for(const key of ['parameters','templateSets'])for(const item of additions[key])if(!state.library[key].some(v=>v.id===item.id))state.library[key].push(structuredClone(item));
+  state.appliedLibraryUpdates=[...(state.appliedLibraryUpdates||[]),'oct26'];
+}
+function upgradeValues(p){if(typeof p.values==='string')p.values=p.values.trim().split(/\r?\n/).map(value=>({value}));}
+for(const p of state.library.parameters)upgradeValues(p);
+for(const c of [...state.combinations,...(composer?[composer]:[])])for(const b of c.bindings)upgradeValues(b.parameter);
 function toast(text){$('toast').textContent=text;$('toast').hidden=false;clearTimeout(timer);timer=setTimeout(()=>$('toast').hidden=true,4500);}
 function persist(){state.workspace={version:1,composer,rows};try{localStorage.setItem(STORAGE,JSON.stringify(state));$('save-state').textContent='브라우저에 저장됨';}catch{$('save-state').textContent='자동 저장 불가 · 설정을 내보내세요';}}
 function confirm(title,description,fn){$('confirm-title').textContent=title;$('confirm-description').textContent=description;confirmAction=fn;$('confirm-dialog').showModal();}
@@ -27,7 +37,7 @@ function renderLibrary(){
   const name=(kind,item)=>`<button class="name-button" data-library="${kind}" data-id="${esc(item.id)}" data-action="edit">${esc(item.name)}</button>`;
   const tq=$('template-search').value.trim().toLocaleLowerCase(),pq=$('parameter-search').value.trim().toLocaleLowerCase();
   $('template-library').innerHTML=templateSets.filter(t=>[t.name,...t.templates.map(v=>v.text)].join(' ').toLocaleLowerCase().includes(tq)).map(t=>`<tr><td>${name('templates',t)}</td><td><span class="library-excerpt">${esc(t.templates[0]?.text)}</span></td><td>${t.templates.length}</td><td>${actions('templates',t.id)}</td></tr>`).join('')||`<tr><td colspan="4"><div class="empty-hint">${tq?'검색 결과가 없습니다.':'등록된 템플릿이 없습니다.'}</div></td></tr>`;
-  $('parameter-library').innerHTML=parameters.filter(p=>[p.name,p.values].join(' ').toLocaleLowerCase().includes(pq)).map(p=>`<tr><td>${name('parameters',p)}</td><td><span class="library-excerpt">${esc(valuesOf(p.values).join(', '))}</span></td><td>${valuesOf(p.values).length}</td><td>${actions('parameters',p.id)}</td></tr>`).join('')||`<tr><td colspan="4"><div class="empty-hint">${pq?'검색 결과가 없습니다.':'등록된 파라미터가 없습니다.'}</div></td></tr>`;
+  $('parameter-library').innerHTML=parameters.filter(p=>[p.name,JSON.stringify(p.values)].join(' ').toLocaleLowerCase().includes(pq)).map(p=>`<tr><td>${name('parameters',p)}</td><td><span class="library-excerpt">${esc(valueLabels(p.values).join(', '))}</span></td><td>${valueLabels(p.values).length}</td><td>${actions('parameters',p.id)}</td></tr>`).join('')||`<tr><td colspan="4"><div class="empty-hint">${pq?'검색 결과가 없습니다.':'등록된 파라미터가 없습니다.'}</div></td></tr>`;
   renderTemplatePicker();
 }
 $('template-search').oninput=$('parameter-search').oninput=renderLibrary;
@@ -44,18 +54,17 @@ $('template-picker').onchange=e=>{
 function libraryArray(kind){return state.library[kind==='templates'?'templateSets':'parameters'];}
 function openEditor(kind,id){
   draftKind=kind;const existing=libraryArray(kind).find(v=>v.id===id);
-  draft=existing?structuredClone(existing):kind==='templates'?{id:uid(),name:'',templates:[{id:uid(),name:'질문 1',text:''}]}:{id:uid(),name:'',values:''};
+  draft=existing?structuredClone(existing):kind==='templates'?{id:uid(),name:'',templates:[{id:uid(),name:'질문 1',text:''}]}:{id:uid(),name:'',values:[{value:''}]};
   $('editor-title').textContent=(kind==='templates'?'템플릿':'파라미터')+(existing?' 수정':' 추가');$('draft-name').value=draft.name;
-  $('draft-help').textContent=kind==='templates'?'변수는 {Country}, {Model} 형식으로 입력하세요.':'';
+  $('draft-help').textContent=kind==='templates'?'변수는 {Country}, {Model} 형식으로 입력하세요.':'배열의 객체 하나가 한 선택지입니다. 조합은 템플릿 변수명과 같은 키를 사용하세요.';
   $('add-draft-item').hidden=kind!=='templates';$('add-draft-item').textContent='문장 추가';$('draft-name').previousElementSibling.textContent=kind==='templates'?'템플릿 이름':'파라미터 이름';$('draft-error').hidden=true;renderDraft();$('library-editor').showModal();$('draft-name').focus();
 }
 function renderDraft(){
-  $('draft-items').innerHTML=draftKind==='templates'?draft.templates.map((t,i)=>`<div class="draft-block"><div class="draft-title"><label class="field-label" for="draft-label-${i}">질문 ${i+1} 이름</label><button type="button" class="quiet small" data-remove="${i}">삭제</button></div><input id="draft-label-${i}" class="text-input" data-field="name" data-index="${i}" value="${esc(t.name)}" maxlength="200"><label class="field-label" for="draft-text-${i}">질문 문장</label><textarea id="draft-text-${i}" data-field="text" data-index="${i}" maxlength="16000" placeholder="What is the best {Category} in {Country}?">${esc(t.text)}</textarea></div>`).join(''):`<div class="draft-block"><label class="field-label" for="draft-values">값 목록 · 한 줄에 하나</label><textarea id="draft-values" data-field="values" maxlength="50000" placeholder="Australia
-Korea">${esc(draft.values)}</textarea></div>`;
+  $('draft-items').innerHTML=draftKind==='templates'?draft.templates.map((t,i)=>`<div class="draft-block"><div class="draft-title"><label class="field-label" for="draft-label-${i}">질문 ${i+1} 이름</label><button type="button" class="quiet small" data-remove="${i}">삭제</button></div><input id="draft-label-${i}" class="text-input" data-field="name" data-index="${i}" value="${esc(t.name)}" maxlength="200"><label class="field-label" for="draft-text-${i}">질문 문장</label><textarea id="draft-text-${i}" data-field="text" data-index="${i}" maxlength="16000" placeholder="What is the best {Category} in {Country}?">${esc(t.text)}</textarea></div>`).join(''):`<div class="draft-block"><label class="field-label" for="draft-values">값 목록 · 객체 배열</label><textarea id="draft-values" data-field="values" maxlength="50000" placeholder='[{"country":"Australia"}]'>${esc(typeof draft.values==='string'?JSON.stringify(draft.values.trim().split(/\r?\n/).map(value=>({value})),null,2):JSON.stringify(draft.values,null,2))}</textarea></div>`;
 
 }
 $('draft-name').oninput=e=>draft.name=e.target.value;
-$('draft-items').oninput=e=>{if(e.target.dataset.field){if(draftKind==='templates')draft.templates[e.target.dataset.index][e.target.dataset.field]=e.target.value;else draft.values=e.target.value;}};
+$('draft-items').oninput=e=>{if(e.target.dataset.field){if(draftKind==='templates')draft.templates[e.target.dataset.index][e.target.dataset.field]=e.target.value;else draft.valuesText=e.target.value;}};
 $('draft-items').onclick=e=>{const button=e.target.closest('[data-remove]');if(button){draft.templates.splice(Number(button.dataset.remove),1);renderDraft();}};
 $('add-draft-item').onclick=()=>{if(draft.templates.length>=100)return toast('질문은 100개까지 가능합니다.');draft.templates.push({id:uid(),name:'질문 '+(draft.templates.length+1),text:''});renderDraft();};
 $('close-editor').onclick=$('cancel-editor').onclick=()=>$('library-editor').close();
@@ -67,7 +76,7 @@ $('library-form').onsubmit=e=>{
       if(!draft.templates.length||draft.templates.some(t=>!t.name.trim()||!t.text.trim()))throw Error('질문 이름과 문장을 하나 이상 입력하세요.');
       if(draft.templates.some(t=>/[{}]/.test(t.text.replace(/\{[^{}]+\}/g,''))||/\{\s*\}/.test(t.text)))throw Error('빈칸 표기는 {이름} 형식으로 입력하세요.');
     }else{
-      if(!valuesOf(draft.values).length)throw Error('값을 한 개 이상 입력하세요.');
+      draft.values=objectValues(JSON.parse(draft.valuesText??(typeof draft.values==='string'?JSON.stringify(draft.values.trim().split(/\r?\n/).map(value=>({value}))):JSON.stringify(draft.values))));delete draft.valuesText;
     }
     const list=libraryArray(draftKind),index=list.findIndex(v=>v.id===draft.id);
     if(index<0&&list.length>=(draftKind==='templates'?50:1500))throw Error('라이브러리의 최대 항목 수에 도달했습니다.');
@@ -87,15 +96,15 @@ function renderComposer(){
   renderTemplatePicker();
   $('template-text').innerHTML=c?c.templateSet.templates.filter(t=>t.enabled).map(t=>`<p>${esc(t.text)}</p>`).join(''):'';
   $('parameter-choices').innerHTML=c?requiredSlots(c.templateSet).map((slot,i)=>{
-    const p=c.bindings.find(b=>b.slot===slot)?.parameter,original=state.library.parameters.find(v=>v.id===p?.id),changed=p&&original&&(p.name!==original.name||p.values!==original.values);
-    return `<div class="parameter-choice" data-slot="${esc(slot)}"><label class="field-label" for="parameter-${i}">{${esc(slot)}}</label><select id="parameter-${i}" data-slot="${esc(slot)}" aria-label="${esc(slot)} 파라미터"><option value="">파라미터 선택</option>${p&&!original?`<option value="${esc(p.id)}" selected>${esc(p.name)} (사본)</option>`:''}${state.library.parameters.map(v=>`<option value="${esc(v.id)}" ${p?.id===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select>${p?`<div class="parameter-detail"><span>${esc(p.values.trim().split(/\r?\n/).slice(0,3).join(', '))}${p.values.trim().split(/\r?\n/).length>3?' …':''}</span>${changed?'<button class="quiet small" data-refresh>업데이트</button>':''}</div>`:''}</div>`;
+    const p=c.bindings.find(b=>b.slot===slot)?.parameter,original=state.library.parameters.find(v=>v.id===p?.id),changed=p&&original&&(p.name!==original.name||JSON.stringify(p.values)!==JSON.stringify(original.values));
+    return `<div class="parameter-choice" data-slot="${esc(slot)}"><label class="field-label" for="parameter-${i}">{${esc(slot)}}</label><select id="parameter-${i}" data-slot="${esc(slot)}" aria-label="${esc(slot)} 파라미터"><option value="">파라미터 선택</option>${p&&!original?`<option value="${esc(p.id)}" selected>${esc(p.name)} (사본)</option>`:''}${state.library.parameters.map(v=>`<option value="${esc(v.id)}" ${p?.id===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select>${p?`<div class="parameter-detail"><span>${esc(valueLabels(p.values).slice(0,3).join(', '))}${valueLabels(p.values).length>3?' …':''}</span>${changed?'<button class="quiet small" data-refresh>업데이트</button>':''}</div>`:''}</div>`;
   }).join(''):'';
   $('parameter-choices').hidden=!c||!requiredSlots(c.templateSet).length;
   $('generate').disabled=!c;
 }
 $('parameter-choices').onchange=e=>{
   const slot=e.target.dataset.slot;if(!slot||!composer)return;
-  try{if(e.target.value)bindParameter({...state,combinations:[composer]},composer.id,slot,e.target.value);else composer.bindings=composer.bindings.filter(b=>b.slot!==slot);
+  try{if(e.target.value)bindParameter({...state,combinations:[composer]},composer.id,slot,e.target.value);else {const old=composer.bindings.find(b=>b.slot===slot);composer.bindings=composer.bindings.filter(b=>b.slot!==slot&&!(Array.isArray(old?.parameter.values)&&Object.keys(old.parameter.values[0]).length>1&&b.parameter.id===old.parameter.id));}
     invalidatePreview();persist();renderComposer();
     for(const el of $('parameter-choices').querySelectorAll('select'))if(el.dataset.slot===slot)el.focus({preventScroll:true});
   }catch(error){toast(error.message);}

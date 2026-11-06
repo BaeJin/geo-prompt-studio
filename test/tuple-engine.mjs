@@ -1,5 +1,12 @@
 import {migrateParameters,appendPromptList,toCSV} from './engine.mjs';
 export {appendPromptList,toCSV};
+export const promptTypes=['recommendation','comparison','evaluation'];
+const legacyTypes=new Map([
+  ...['oct26-consideration','t-recommend','t-alternative','t-extra-alternative'].map(id=>[id,'recommendation']),
+  ...['oct26-comparison','t-compare'].map(id=>[id,'comparison']),
+  ...['oct26-evaluation','oct26-barriers','t-pros','t-extra-pros'].map(id=>[id,'evaluation'])
+]);
+export const templateType=t=>t.prompt_type ?? legacyTypes.get(t.id);
 export const idPattern=/^[A-Za-z0-9_][A-Za-z0-9_-]*$/;
 export function tupleValues(values){
   if(!Array.isArray(values)||!values.length||values.length>10000)throw Error('값은 비어 있지 않은 2차원 배열이어야 합니다.');
@@ -81,6 +88,7 @@ export function generateIndependent(s){
   validateState(s);const plans=[],errors=[];let total=0;
   const active=s.combinations.filter(c=>c.enabled);if(!active.length)errors.push('템플릿을 선택하세요.');
   for(const c of active)for(const t of c.templateSet.templates.filter(t=>t.enabled!==false))try{
+    if(!promptTypes.includes(templateType(t)))throw Error('질문 유형을 선택하세요.');
     const country=(c.searchCountry || '').trim().toUpperCase() || null;
     if(country && !/^[A-Z]{2}$/.test(country))throw Error('웹 검색 국가는 두 글자 국가 코드로 입력하세요. 예: AU');
     if(!t.text.trim())throw Error('질문 문장을 입력하세요.');
@@ -106,7 +114,7 @@ export function generateIndependent(s){
     for(const r of refs)parameters[r.token]=chosen.get(r.id)[r.index??0];
     const text=t.text.replace(/\{([^{}]+)\}/g,(_,token)=>parameters[token]);
     if(seen.has(text)){duplicates++;if(s.dedupe)continue;}seen.add(text);
-    rows.push({number:rows.length+1,prompt_text:text,country,template_id:t.id,template_text:t.text,
+    rows.push({number:rows.length+1,prompt_text:text,country,prompt_type:templateType(t),template_id:t.id,template_text:t.text,
       param_values:[...new Map(refs.map(r=>[r.token,{variable_name:r.token,params_id:r.id,params_name:list.find(p=>p.id===r.id).name,value:parameters[r.token]}])).values()],template_set:c.templateSet.name,template_name:t.name,parameter_set:list.map(p=>p.name).join(' / '),parameters});
   }
   return {rows,errors:[],total,duplicates};

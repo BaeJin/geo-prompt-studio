@@ -1,5 +1,5 @@
 import {initialState,migrationBaseline} from './library-tuples.mjs';
-import {tupleValues,valueLabels,references,idPattern,migrateTuples,loadTemplate,generateIndependent,appendPromptList,restoreWorkspace,toCSV} from './tuple-engine.mjs';
+import {promptTypes,templateType,tupleValues,valueLabels,references,idPattern,migrateTuples,loadTemplate,generateIndependent,appendPromptList,restoreWorkspace,toCSV} from './tuple-engine.mjs';
 const migrateStudio=value=>migrateTuples(value,migrationBaseline);
 const $=id=>document.getElementById(id), uid=()=>crypto.randomUUID();
 const esc=text=>String(text??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -57,7 +57,7 @@ function openEditor(kind,id){
   $('add-draft-item').hidden=kind!=='templates';$('add-draft-item').textContent='문장 추가';$('draft-name').previousElementSibling.textContent=kind==='templates'?'템플릿 이름':'파라미터 이름';$('draft-error').hidden=true;renderDraft();$('library-editor').showModal();$('draft-name').focus();
 }
 function renderDraft(){
-  $('draft-items').innerHTML=draftKind==='templates'?draft.templates.map((t,i)=>`<div class="draft-block"><div class="draft-title"><label class="field-label" for="draft-label-${i}">질문 ${i+1} 이름</label><button type="button" class="quiet small" data-remove="${i}">삭제</button></div><input id="draft-label-${i}" class="text-input" data-field="name" data-index="${i}" value="${esc(t.name)}" maxlength="200"><label class="field-label" for="draft-text-${i}">질문 문장</label><textarea id="draft-text-${i}" data-field="text" data-index="${i}" maxlength="16000" placeholder="In {country}, compare {comparison[0]} with {comparison[1]}.">${esc(t.text)}</textarea></div>`).join(''):`<div class="draft-block"><label class="field-label" for="draft-param-id">파라미터 ID</label><input id="draft-param-id" data-field="id" value="${esc(draft.id)}" ${draft.existing?'disabled':''} maxlength="200" placeholder="country 또는 comparison"><label class="field-label" for="draft-values">값 목록 · 2차원 배열</label><textarea id="draft-values" data-field="values" maxlength="50000" placeholder='[["Australia"],["Germany"]]'>${esc(JSON.stringify(draft.values,null,2))}</textarea></div>`;
+  $('draft-items').innerHTML=draftKind==='templates'?draft.templates.map((t,i)=>`<div class="draft-block"><div class="draft-title"><label class="field-label" for="draft-label-${i}">질문 ${i+1} 이름</label><button type="button" class="quiet small" data-remove="${i}">삭제</button></div><input id="draft-label-${i}" class="text-input" data-field="name" data-index="${i}" value="${esc(t.name)}" maxlength="200"><label class="field-label" for="draft-type-${i}">질문 유형</label><select id="draft-type-${i}" data-field="prompt_type" data-index="${i}" required><option value="">유형 선택</option>${promptTypes.map(type=>`<option value="${type}" ${type===templateType(t)?'selected':''}>${type}</option>`).join('')}</select><label class="field-label" for="draft-text-${i}">질문 문장</label><textarea id="draft-text-${i}" data-field="text" data-index="${i}" maxlength="16000" placeholder="In {country}, compare {comparison[0]} with {comparison[1]}.">${esc(t.text)}</textarea></div>`).join(''):`<div class="draft-block"><label class="field-label" for="draft-param-id">파라미터 ID</label><input id="draft-param-id" data-field="id" value="${esc(draft.id)}" ${draft.existing?'disabled':''} maxlength="200" placeholder="country 또는 comparison"><label class="field-label" for="draft-values">값 목록 · 2차원 배열</label><textarea id="draft-values" data-field="values" maxlength="50000" placeholder='[["Australia"],["Germany"]]'>${esc(JSON.stringify(draft.values,null,2))}</textarea></div>`;
 
 }
 $('draft-name').oninput=e=>draft.name=e.target.value;
@@ -71,7 +71,7 @@ $('library-form').onsubmit=e=>{
     if(!draft.name.trim())throw Error('이름을 입력하세요.');
     if(draftKind==='templates'){
       if(!draft.templates.length||draft.templates.some(t=>!t.name.trim()||!t.text.trim()))throw Error('질문 이름과 문장을 하나 이상 입력하세요.');
-      for(const t of draft.templates)references(t.text);
+      for(const t of draft.templates){references(t.text);t.prompt_type=templateType(t);if(!promptTypes.includes(t.prompt_type))throw Error('질문 유형을 선택하세요.');}
     }else{
       if(!idPattern.test(draft.id)||draft.id.length>200)throw Error('ID는 영문·숫자·밑줄·하이픈을 사용하세요.');
       if(!draft.existing&&state.library.parameters.some(p=>p.id===draft.id))throw Error('이미 사용 중인 파라미터 ID입니다.');
@@ -111,14 +111,15 @@ function renderComposer(){
 }
 $('search-country').oninput=e=>{if(composer){composer.searchCountry=e.target.value.toUpperCase();invalidatePreview();persist();}};
 $('parameter-choices').onclick=e=>{if(e.target.closest('[data-refresh]')){delete composer.parameters;invalidatePreview();persist();renderComposer();}};
+const metadataChanged=(a,b)=>(a.country ?? null)!==b.country || a.prompt_type!==b.prompt_type;
 function renderPending(){
   $('generated-preview').hidden=!pendingRows.length;
   if(!pendingRows.length)return;
   const existing=new Map(rows.map(r=>[r.prompt_text,r]));
   const newCount=pendingRows.filter(r=>!existing.has(r.prompt_text)).length;
-  const changedCount=pendingRows.filter(r=>existing.has(r.prompt_text) && (existing.get(r.prompt_text).country ?? null)!==r.country).length;
+  const changedCount=pendingRows.filter(r=>existing.has(r.prompt_text) && metadataChanged(existing.get(r.prompt_text),r)).length;
   $('generated-count').textContent=pendingRows.length+'개';
-  $('generated-summary').textContent=`신규 ${newCount}개 · 검색 국가 변경 ${changedCount}개`;
+  $('generated-summary').textContent=`신규 ${newCount}개 · 국가·유형 변경 ${changedCount}개`;
   $('generated-rows').innerHTML=pendingRows.slice(0,previewLimit).map(r=>`<li>${esc(r.prompt_text)}</li>`).join('');
   $('preview-more').hidden=previewLimit>=pendingRows.length;
   $('preview-more').textContent=`더 보기 (${Math.min(previewLimit,pendingRows.length)}/${pendingRows.length})`;
@@ -140,7 +141,7 @@ $('add-to-list').onclick=()=>{
     const updates=new Map(pendingRows.map(r=>[r.prompt_text,r]));
     const current=rows.map(old=>{
       const r=updates.get(old.prompt_text);
-      return r && (old.country ?? null)!==r.country ? {...r,number:old.number} : old;
+      return r && metadataChanged(old,r) ? {...r,number:old.number} : old;
     });
     const result=appendPromptList(current,pendingRows);
     rows=result.rows;selected=new Set(rows.map(r=>r.number));page=0;$('search').value='';

@@ -105,7 +105,7 @@ export function csvCell(value) {
   return '"' + text.replaceAll('"', '""') + '"';
 }
 export function toCSV(rows) {
-  const header = ['number', 'prompt_text', 'template_set', 'template_name', 'parameter_set', 'parameters', 'country'];
+  const header = ['number', 'prompt_text', 'template_set', 'template_name', 'parameter_set', 'parameters', 'country', 'prompt_type'];
   return '\uFEFF' + [header, ...rows.map(r => header.map(k => k === 'parameters' ? JSON.stringify(r[k]) : r[k]))]
     .map(row => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
 }

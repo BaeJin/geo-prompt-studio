@@ -81,6 +81,8 @@ export function generateIndependent(s){
   validateState(s);const plans=[],errors=[];let total=0;
   const active=s.combinations.filter(c=>c.enabled);if(!active.length)errors.push('템플릿을 선택하세요.');
   for(const c of active)for(const t of c.templateSet.templates.filter(t=>t.enabled!==false))try{
+    const country=(c.searchCountry || '').trim().toUpperCase() || null;
+    if(country && !/^[A-Z]{2}$/.test(country))throw Error('웹 검색 국가는 두 글자 국가 코드로 입력하세요. 예: AU');
     if(!t.text.trim())throw Error('질문 문장을 입력하세요.');
     const refs=references(t.text),groups=new Map();
     for(const ref of refs){
@@ -94,17 +96,18 @@ export function generateIndependent(s){
     const list=[...groups.values()];const count=c.mode==='zip'?Math.max(1,...list.map(p=>p.values.length)):list.reduce((n,p)=>n*p.values.length,1);
     if(c.mode==='zip'&&list.some(p=>p.values.length!==1&&p.values.length!==count))throw Error('이전 행별 조합 길이가 다릅니다.');
     total+=count;if(total>10000)throw Error('전체 조합을 10,000개 이하로 줄여주세요.');
-    plans.push({t,c,refs,list,count});
+    plans.push({t,c,refs,list,count,country});
   }catch(e){errors.push(`${t.name}: ${e.message}`);}
   if(errors.length)return {rows:[],errors,total,duplicates:0};
   const rows=[],seen=new Set();let duplicates=0;
-  for(const {t,c,refs,list,count} of plans)for(let i=0;i<count;i++){
+  for(const {t,c,refs,list,count,country} of plans)for(let i=0;i<count;i++){
     let cursor=i;const chosen=new Map(),parameters=Object.create(null);
     for(const p of [...list].reverse()){chosen.set(p.id,p.values[c.mode==='zip'?(p.values.length===1?0:i):cursor%p.values.length]);if(c.mode!=='zip')cursor=Math.floor(cursor/p.values.length);}
     for(const r of refs)parameters[r.token]=chosen.get(r.id)[r.index??0];
     const text=t.text.replace(/\{([^{}]+)\}/g,(_,token)=>parameters[token]);
     if(seen.has(text)){duplicates++;if(s.dedupe)continue;}seen.add(text);
-    rows.push({number:rows.length+1,prompt_text:text,template_set:c.templateSet.name,template_name:t.name,parameter_set:list.map(p=>p.name).join(' / '),parameters});
+    rows.push({number:rows.length+1,prompt_text:text,country,template_id:t.id,template_text:t.text,
+      param_values:[...new Map(refs.map(r=>[r.token,{variable_name:r.token,params_id:r.id,params_name:list.find(p=>p.id===r.id).name,value:parameters[r.token]}])).values()],template_set:c.templateSet.name,template_name:t.name,parameter_set:list.map(p=>p.name).join(' / '),parameters});
   }
   return {rows,errors:[],total,duplicates};
 }

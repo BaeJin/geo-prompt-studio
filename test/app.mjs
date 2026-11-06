@@ -95,6 +95,8 @@ function invalidatePreview(){pendingRows=[];$('generated-preview').hidden=true;$
 function renderComposer(){
   const c=composer;
   renderTemplatePicker();
+  $('search-country').disabled=!c;
+  $('search-country').value=c?.searchCountry || '';
   $('template-text').innerHTML=c?c.templateSet.templates.filter(t=>t.enabled).map(t=>`<p>${esc(t.text)}</p>`).join(''):'';
   try{
     const ids=c?[...new Set(c.templateSet.templates.filter(t=>t.enabled!==false).flatMap(t=>references(t.text).map(r=>r.id)))]:[];
@@ -107,19 +109,21 @@ function renderComposer(){
   }catch(error){$('parameter-choices').hidden=false;$('parameter-choices').textContent=error.message;}
   $('generate').disabled=!c;
 }
+$('search-country').oninput=e=>{if(composer){composer.searchCountry=e.target.value.toUpperCase();invalidatePreview();persist();}};
 $('parameter-choices').onclick=e=>{if(e.target.closest('[data-refresh]')){delete composer.parameters;invalidatePreview();persist();renderComposer();}};
 function renderPending(){
   $('generated-preview').hidden=!pendingRows.length;
   if(!pendingRows.length)return;
-  const existing=new Set(rows.map(r=>r.prompt_text)),duplicateCount=pendingRows.filter(r=>existing.has(r.prompt_text)).length;
-  const newCount=pendingRows.length-duplicateCount;
+  const existing=new Map(rows.map(r=>[r.prompt_text,r]));
+  const newCount=pendingRows.filter(r=>!existing.has(r.prompt_text)).length;
+  const changedCount=pendingRows.filter(r=>existing.has(r.prompt_text) && (existing.get(r.prompt_text).country ?? null)!==r.country).length;
   $('generated-count').textContent=pendingRows.length+'개';
-  $('generated-summary').textContent=duplicateCount?`신규 ${newCount}개 · 중복 ${duplicateCount}개 제외`:`신규 ${newCount}개`;
+  $('generated-summary').textContent=`신규 ${newCount}개 · 검색 국가 변경 ${changedCount}개`;
   $('generated-rows').innerHTML=pendingRows.slice(0,previewLimit).map(r=>`<li>${esc(r.prompt_text)}</li>`).join('');
   $('preview-more').hidden=previewLimit>=pendingRows.length;
   $('preview-more').textContent=`더 보기 (${Math.min(previewLimit,pendingRows.length)}/${pendingRows.length})`;
-  $('add-to-list').disabled=!newCount;
-  $('add-to-list').textContent=newCount?`목록에 추가 (${newCount})`:'모두 목록에 있음';
+  $('add-to-list').disabled=!(newCount+changedCount);
+  $('add-to-list').textContent=newCount+changedCount?`목록에 적용 (${newCount+changedCount})`:'모두 목록에 있음';
 }
 $('preview-more').onclick=()=>{previewLimit+=30;renderPending();};
 $('generate').onclick=()=>{
@@ -133,7 +137,12 @@ $('generate').onclick=()=>{
 };
 $('add-to-list').onclick=()=>{
   try{
-    const result=appendPromptList(rows,pendingRows);
+    const updates=new Map(pendingRows.map(r=>[r.prompt_text,r]));
+    const current=rows.map(old=>{
+      const r=updates.get(old.prompt_text);
+      return r && (old.country ?? null)!==r.country ? {...r,number:old.number} : old;
+    });
+    const result=appendPromptList(current,pendingRows);
     rows=result.rows;selected=new Set(rows.map(r=>r.number));page=0;$('search').value='';
     pendingRows=[];persist();renderResults();renderPending();
     toast(`${result.added}개 추가${result.duplicates?' · 중복 '+result.duplicates+'개 제외':''}`);
@@ -146,7 +155,7 @@ $('remove-selected').onclick=()=>{
     rows=rows.filter(r=>!removing.has(r.number)).map((r,i)=>({...r,number:i+1}));selected.clear();persist();renderResults();renderPending();
   });
 };
-function renderResults(){$('preview-count').textContent=rows.length.toLocaleString('ko-KR');const q=$('search').value.toLocaleLowerCase(),filtered=rows.filter(r=>[r.prompt_text,r.template_set,r.parameter_set].some(v=>v.toLocaleLowerCase().includes(q)));page=Math.min(page,Math.max(0,Math.ceil(filtered.length/30)-1));$('results').innerHTML=filtered.slice(page*30,page*30+30).map(r=>`<div class="result-row"><label class="result-index"><input type="checkbox" data-result="${r.number}" aria-label="질문 ${r.number} 선택" ${selected.has(r.number)?'checked':''}><span>${String(r.number).padStart(2,'0')}</span></label><div><p class="prompt-text">${esc(r.prompt_text)}</p><p class="provenance"><span>${esc(r.template_name)}</span><span>${esc(r.parameter_set)}</span></p></div></div>`).join('')||`<div class="empty-hint">${rows.length?'검색 결과가 없습니다.':'목록에 추가된 프롬프트가 없습니다.'}</div>`;$('page-info').textContent=filtered.length?`${page*30+1}–${Math.min((page+1)*30,filtered.length)} / ${filtered.length}개`:'0개';$('previous').disabled=page===0;$('next').disabled=(page+1)*30>=filtered.length;updateSelection();}
+function renderResults(){$('preview-count').textContent=rows.length.toLocaleString('ko-KR');const q=$('search').value.toLocaleLowerCase(),filtered=rows.filter(r=>[r.prompt_text,r.template_set,r.parameter_set].some(v=>v.toLocaleLowerCase().includes(q)));page=Math.min(page,Math.max(0,Math.ceil(filtered.length/30)-1));$('results').innerHTML=filtered.slice(page*30,page*30+30).map(r=>`<div class="result-row"><label class="result-index"><input type="checkbox" data-result="${r.number}" aria-label="질문 ${r.number} 선택" ${selected.has(r.number)?'checked':''}><span>${String(r.number).padStart(2,'0')}</span></label><div><p class="prompt-text">${esc(r.prompt_text)}</p><p class="provenance"><span>${esc(r.template_name)}</span>${r.country ? '<span>웹 검색 '+esc(r.country)+'</span>' : ''}<span>${esc(r.parameter_set)}</span></p></div></div>`).join('')||`<div class="empty-hint">${rows.length?'검색 결과가 없습니다.':'목록에 추가된 프롬프트가 없습니다.'}</div>`;$('page-info').textContent=filtered.length?`${page*30+1}–${Math.min((page+1)*30,filtered.length)} / ${filtered.length}개`:'0개';$('previous').disabled=page===0;$('next').disabled=(page+1)*30>=filtered.length;updateSelection();}
 function updateSelection(){$('selection-count').textContent=selected.size+'개 선택';$('export').disabled=!rows.length;$('remove-selected').disabled=!selected.size;$('export').textContent=selected.size&&selected.size<rows.length?`선택 CSV (${selected.size})`:'CSV 다운로드';$('select-all').textContent=rows.length&&selected.size===rows.length?'전체 해제':'전체 선택';}
 $('results').onchange=e=>{if(e.target.dataset.result){const n=Number(e.target.dataset.result);e.target.checked?selected.add(n):selected.delete(n);updateSelection();}};$('select-all').onclick=()=>{selected=selected.size===rows.length?new Set():new Set(rows.map(r=>r.number));renderResults();};$('search').oninput=()=>{page=0;renderResults();};$('previous').onclick=()=>{page--;renderResults();$('results').scrollTop=0;};$('next').onclick=()=>{page++;renderResults();$('results').scrollTop=0;};
 function download(text,name,type){const url=URL.createObjectURL(new Blob([text],{type})),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);}

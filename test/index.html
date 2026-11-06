@@ -12,7 +12,7 @@
 <section class="compose-form panel" aria-label="템플릿과 파라미터 선택">
   <div class="template-choice"><div><label class="field-label" for="template-picker">템플릿</label><select id="template-picker"></select></div><div id="template-text" class="template-text"></div></div>
   <div id="parameter-choices" class="parameter-choices"></div>
-  <div class="compose-actions"><button id="generate" class="primary" disabled>생성</button></div>
+  <label class="field-label" for="search-country">웹 검색 국가 (선택)</label><input id="search-country" class="text-input" maxlength="2" placeholder="예: AU" autocomplete="off"><div class="compose-actions"><button id="generate" class="primary" disabled>생성</button></div>
   <div id="errors" class="errors" role="alert" hidden></div>
   <section id="generated-preview" class="generated-preview" aria-label="생성 결과" hidden><div class="generated-heading"><h2>생성 결과 <span id="generated-count" class="badge"></span></h2><span id="generated-summary" role="status"></span></div><ol id="generated-rows"></ol><button id="preview-more" class="quiet small" hidden>더 보기</button><div class="add-action"><button id="add-to-list" class="primary">목록에 추가</button></div></section>
 </section>

@@ -16,8 +16,8 @@ function toast(message){$('toast').textContent=message;$('toast').hidden=false;c
 function categoryName(id){if(!id)return '미분류';const c=data.categories.find(c=>c.category_set_id===currentAnalysis?.category_set_id&&c.rfp_id===id);return c?.rfp_name||id;}
 function version(){return $('version').value;}
 function setData(value){
-  if(value.source_kind!=='customer_export'||value.source!=='hyundai-global-search.global_geo')throw Error('고객사 DB에서 갱신한 데이터 파일을 사용하세요.');
-  data=withPromptMetadata(validateData(latestSchemaData(value)));drill='';comparing=false;drillSide='target';selectedResponses=new Set();browsePage=0;expandedPrompts=new Set();
+  if(value.source_kind!=='customer_export'||!['hyundai-global-search.global_geo','hyundai-global-search.global_ai_visibility'].includes(value.source))throw Error('고객사 DB에서 갱신한 데이터 파일을 사용하세요.');
+  data=withPromptMetadata(validateData(latestSchemaData(value)));drill='';comparing=false;drillSide='target';selectedResponses=new Set(value.source.endsWith('.global_ai_visibility')?value.responses.map(r=>r.task_id):[]);browsePage=0;expandedPrompts=new Set();
   try{const saved=JSON.parse(localStorage.getItem(SELECTION_STORAGE)||'null');if(saved?.source===data.source&&saved?.version===data.export_info?.export_version&&Array.isArray(saved.ids))selectedResponses=new Set(saved.ids.filter(id=>data.responses.some(r=>r.task_id===id)));}catch{}
   $('loading').hidden=true;$('empty').hidden=true;$('dashboard').hidden=false;$('export').disabled=false;
   $('snapshot').textContent=`${date(data.exported_at)} KST`;
@@ -218,6 +218,9 @@ function renderEntity(){
   $('recommendation').innerHTML=(e.is_recommended===null?'추천 미판정':e.is_recommended?e.legacy?'해당 언급에서 추천':'추천':'추천 대상 아님')+` · 최우선 추천: ${priorityText(e,currentAnalysis)}`+recommendationEvidence(e).map((r,i)=>`<br><button class="small" data-recommendation="${i}">${esc(r.raw_model?r.raw_model+' · 근거':'추천 근거 보기')}</button>`).join('');
   $('sentiment-score').textContent=`긍부정 ${scoreText(e)} · ${scoreBasis(e)}`;
   $('entity-identity').innerHTML=(e.members?.length?`<details><summary>원래 표기 ${e.members.length}개</summary>${e.members.map(m=>`<div>${esc([m.entity.brand,m.entity.model].filter(Boolean).join(' · '))}</div>`).join('')}</details>`:'');
+  if(Number.isInteger(e.rank))$('recommendation').append(document.createTextNode(' · 추천 순위 '+e.rank+'위'));
+  const links=(e.links||[]).filter(l=>/^https?:\/\//i.test(l.url));
+  if(links.length)$('entity-identity').insertAdjacentHTML('beforeend',`<details><summary>출처 링크 ${links.length}개</summary><ul>${links.map(l=>`<li><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.domain||l.url)}</a> · ${esc(l.title||'')}<br>${esc(l.evidence||'')}</li>`).join('')}</ul></details>`);
   const selected=$('category').value,ids=[...new Set(e.kbf_assessments.map(k=>k.category_id||''))];
   $('category').innerHTML='<option value="all">모든 KBF</option>'+ids.map(id=>`<option value="${esc(id||'unclassified')}">${esc(categoryName(id))}</option>`).join('');
   if(ids.some(id=>(id||'unclassified')===selected))$('category').value=selected;
@@ -225,7 +228,7 @@ function renderEntity(){
 }
 function renderAssessments(){
   const e=currentEntities.find(e=>e.key===entityKey);if(!e)return;
-  $('assessments').innerHTML=e.kbf_assessments.map((k,i)=>({...k,index:i})).filter(k=>($('category').value==='all'||(k.category_id||'unclassified')===$('category').value)&&($('sentiment').value==='all'||k.sentiment===$('sentiment').value)).map(k=>`<article class="assessment"><div class="assessment-head"><span class="sentiment ${k.sentiment==='POSITIVE'?'positive':k.sentiment==='NEGATIVE'?'negative':''}">${esc(sentiments[k.sentiment]||k.sentiment)}</span><strong>${esc(categoryName(k.category_id))}</strong></div><blockquote>${esc(k.evidence)}</blockquote><button class="small" data-evidence="${k.index}">원문에서 보기</button></article>`).join('')||'<div class="blank">해당 KBF 평가가 없습니다.</div>';
+  $('assessments').innerHTML=e.kbf_assessments.map((k,i)=>({...k,index:i})).filter(k=>($('category').value==='all'||(k.category_id||'unclassified')===$('category').value)&&($('sentiment').value==='all'||k.sentiment===$('sentiment').value)).map(k=>`<article class="assessment"><div class="assessment-head"><span class="sentiment ${k.sentiment==='POSITIVE'?'positive':k.sentiment==='NEGATIVE'?'negative':''}">${esc(sentiments[k.sentiment]||k.sentiment)}</span><strong>${esc(categoryName(k.category_id))}</strong></div>${k.reason_content?`<p>${esc(k.reason_content)}</p>`:''}<blockquote>${esc(k.evidence)}</blockquote><button class="small" data-evidence="${k.index}">원문에서 보기</button></article>`).join('')||'<div class="blank">해당 KBF 평가가 없습니다.</div>';
 }
 function syncLocation(){history.replaceState(null,'','#'+new URLSearchParams({view:activeView,...(promptId?{prompt:promptId}:{}),...(responseId?{response:responseId}:{})}));}
 function applyView(){
@@ -323,5 +326,18 @@ $('export').onclick=()=>{const rows=activeView==='analysis'?groups.flatMap(g=>g.
 $('analysis-export').onclick=()=>{if(currentAnalysis&&selectedResponses.has(responseId))download(JSON.stringify({prompt_id:promptId,response_id:responseId,analysis:currentAnalysis},null,2),'geo-analysis-'+promptId+'.json','application/json');};
 $('import').onclick=$('open-data').onclick=()=>$('data-file').click();
 $('data-file').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>100*1024**2)throw Error('100MB 이하의 데이터 파일을 선택하세요.');setData(JSON.parse(await file.text()));toast('데이터를 불러왔습니다.');}catch(error){toast(error.message);}finally{e.target.value='';}};
-try{const response=await fetch('./data.json',{cache:'no-store'});if(!response.ok)throw Error('데이터 파일을 열어 시작하세요.');setData(await response.json());}
+async function loadPublishedData(){
+  const response=await fetch('./data.json.gz',{cache:'no-store'});
+  if(response.status===404){
+    const legacy=await fetch('./data.json',{cache:'no-store'});
+    if(!legacy.ok)throw Error('데이터 파일을 열어 시작하세요.');
+    return legacy.json();
+  }
+  if(!response.ok)throw Error('데이터 파일을 열어 시작하세요.');
+  const blob=await response.blob();
+  const header=new Uint8Array(await blob.slice(0,2).arrayBuffer());
+  if(header[0]===31&&header[1]===139)return new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).json();
+  return JSON.parse(await blob.text());
+}
+try{setData(await loadPublishedData());}
 catch(error){$('loading').hidden=true;$('empty').hidden=false;$('load-message').textContent=error.message==='데이터 파일을 열어 시작하세요.'?'BigQuery에서 내보낸 대시보드 데이터 파일을 여세요. 파일은 서버로 전송되지 않습니다.':'데이터를 읽지 못했습니다. 올바른 대시보드 JSON 파일을 선택하세요.';}
